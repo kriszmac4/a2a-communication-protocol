@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Marveen LLM Bridge — Research ágens automatikus válaszadó.
+Agent Message Bus LLM Bridge — Dev ágens automatikus válaszadó.
 
 no_agent watchdog — közvetlen LLM API hívással válaszol a buszon
 érkező üzenetekre.
@@ -13,8 +13,9 @@ ellenőrzésről.
 import json
 import os
 import sys
-import urllib.error
+import time
 import urllib.request
+import urllib.error
 from pathlib import Path
 
 from bridge_engine import (
@@ -30,24 +31,23 @@ from bridge_engine import (
 
 # ── Konfiguráció ───────────────────────────────────────────────────────────────
 
-AGENT_ID = "research"
+AGENT_ID = "dev"
 
 API_BASE = os.environ.get("OPENCODE_BASE_URL", "https://opencode.ai/zen/v1")
-MODEL = os.environ.get("MARVEEN_LLM_MODEL", "nemotron-3-ultra-free")
+MODEL = os.environ.get("AMB_LLM_MODEL", "nemotron-3-ultra-free")
 REQUEST_TIMEOUT = 300
 MAX_PROMPT_LEN = 4000
 
 AGENT_PERSONA = (
-    "Te vagy Research, a Hermes rendszer kutatója. "
-    "Információt gyűjtesz, elemezel, összefoglalókat készítesz, "
-    "trendeket és mintázatokat fedezel fel az adatokban. "
-    "Válaszolj tényszerűen, elemző stílusban, magyarul. "
-    "Ha forrásokat említesz, adj meg linkeket is."
+    "Te vagy Dev, a Hermes rendszer fejlesztője és üzemeltetője. "
+    "Kódolással, API integrációval, scriptekkel, infrastruktúrával foglalkozol. "
+    "Válaszolj gyakorlatiasan, technikai részletekkel, magyarul. "
+    "Ha kódot mutatsz, használj megfelelő szintaxiskiemelést."
 )
 
 SYSTEM_PROMPT = (
     f"{AGENT_PERSONA}\n\n"
-    "Most egy üzenet érkezett hozzád a Marveen Message Buson keresztül. "
+    "Most egy üzenet érkezett hozzád a Agent Message Buson keresztül. "
     "Válaszolj a buszon keresztül vissza. "
     "A válaszod legyen tömör, lényegretörő, magyar nyelvű."
 )
@@ -85,14 +85,14 @@ def query_llm(user_message: str) -> str | None:
             content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             if content:
                 return content.strip()
-            return f"❌ Research Bridge: üres válasz"
+            return f"❌ Dev Bridge: üres válasz"
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")[:200]
-        return f"❌ Research Bridge HTTP {e.code}: {body}"
+        return f"❌ Dev Bridge HTTP {e.code}: {body}"
     except urllib.error.URLError as e:
-        return f"❌ Research Bridge hálózati hiba: {e.reason}"
+        return f"❌ Dev Bridge hálózati hiba: {e.reason}"
     except Exception as e:
-        return f"❌ Research Bridge ismeretlen hiba: {type(e).__name__}: {e}"
+        return f"❌ Dev Bridge ismeretlen hiba: {type(e).__name__}: {e}"
 
 
 def main() -> int:
@@ -112,12 +112,14 @@ def main() -> int:
             msg_id = msg["id"]
             from_agent = msg["from_agent"]
 
+            # Auto-reply check (végtelen ciklus védelem)
             allowed, reason = should_auto_reply(msg, AGENT_ID)
             if not allowed:
                 mark_read(conn, msg_id)
                 skipped += 1
                 continue
 
+            # Felhasználói prompt
             content = msg.get("content", "") or ""
             user_prompt = (
                 f"Üzenet `{from_agent}` agent-től (priority: {msg['priority']}):\n\n"
@@ -136,14 +138,14 @@ def main() -> int:
                 )
                 responses_sent += 1
                 msg_label = f"✅ #{new_id}" if new_id else "❌ write failed"
-                print(f"🤖 #{msg_id} {from_agent}→{AGENT_ID}: Research LLM válasz (depth={new_depth}) {msg_label}")
+                print(f"🤖 #{msg_id} {from_agent}→{AGENT_ID}: Dev LLM válasz (depth={new_depth}) {msg_label}")
             else:
                 mark_failed(conn, msg_id)
                 print(f"❌ #{msg_id} {from_agent}→{AGENT_ID}: LLM hiba — {llm_response}")
 
         if responses_sent > 0:
             plural = "válasz" if responses_sent == 1 else "válasz"
-            print(f"\n📬 **RESEARCH Bridge — {responses_sent} {plural} elküldve**")
+            print(f"\n📬 **DEV Bridge — {responses_sent} {plural} elküldve**")
 
     finally:
         conn.close()

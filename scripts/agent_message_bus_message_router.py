@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Marveen Agent Message Router — Cron-based polling loop (A2A upgrade)
+Agent Message Bus Agent Message Router — Cron-based polling loop (A2A upgrade)
 
 Polls for pending messages every 30 seconds and delivers them.
 Checks target agent session availability and wraps messages with trust preambles.
@@ -9,7 +9,7 @@ A2A upgrades:
 - Active-session detection: checks state.db for currently-running agent sessions
 - Session-interrupt: if target agent has active session, outputs HIGHER urgency
 - Discovers and reports: "agent X is active but has pending messages"
-- Marveen DB: agent_messages (shared between all agents)
+- Agent Message Bus DB: agent_messages (shared between all agents)
 
 Designed to run as a no_agent cron script with 'watchdog' pattern.
 """
@@ -22,10 +22,10 @@ import sys
 import time
 from pathlib import Path
 
-# Resolve marveen module from the script directory
+# Resolve agent_message_bus module from the script directory
 import os as _os
 sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from marveen import (
+from agent_message_bus import (
     get_pending_messages,
     mark_delivered,
     mark_failed,
@@ -34,7 +34,7 @@ from marveen import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("message-router")
 
-HERMES_HOME = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+AMB_DATA_DIR = Path(os.environ.get("AMB_DATA_DIR", Path.home() / ".a2a-protocol"))
 
 # Trust preambles
 TRUSTED_PEER_PREAMBLE = (
@@ -55,7 +55,7 @@ UNTRUSTED_PREAMBLE = (
 
 def get_active_agent_sessions() -> list[str]:
     """Detect currently-active agent sessions from state.db."""
-    state_db = HERMES_HOME / "state.db"
+    state_db = AMB_DATA_DIR / "state.db"
     if not state_db.exists():
         return []
     try:
@@ -76,7 +76,7 @@ def get_running_agents() -> list[str]:
     
     # Check for running gateway sessions
     try:
-        state_db = HERMES_HOME / "state.db"
+        state_db = AMB_DATA_DIR / "state.db"
         if state_db.exists():
             conn = sqlite3.connect(str(state_db))
             sources = conn.execute(
@@ -91,7 +91,7 @@ def get_running_agents() -> list[str]:
         pass
     
     # Also check profiles
-    profiles_dir = HERMES_HOME / "profiles"
+    profiles_dir = AMB_DATA_DIR / "profiles"
     if profiles_dir.exists():
         for p in profiles_dir.iterdir():
             if p.is_dir() and p.name not in agents:
@@ -100,9 +100,9 @@ def get_running_agents() -> list[str]:
     return agents
 
 
-DISCORD_WEBHOOK_URL = os.environ.get("MARVEEN_DISCORD_WEBHOOK", "")
+DISCORD_WEBHOOK_URL = os.environ.get("AMB_DISCORD_WEBHOOK", "")
 DISCORD_THREAD_ID = os.environ.get(
-    "MARVEEN_DISCORD_THREAD",
+    "AMB_DISCORD_THREAD",
     "1509945070910967838"
 )
 DISCORD_ROLE_MENTION = "<@&1501629682175709197>"
@@ -146,7 +146,7 @@ def _write_trigger_file(target_agent: str, message_id: int, from_agent: str) -> 
     the message immediately instead of waiting for the next user message.
     """
     real_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
-    trigger_dir = real_home / ".hermes" / "profiles" / target_agent / "data" / "marveen"
+    trigger_dir = real_home / ".hermes" / "profiles" / target_agent / "data" / "agent_message_bus"
     trigger_dir.mkdir(parents=True, exist_ok=True)
     trigger_path = trigger_dir / "wakeup_pending.json"
     try:
@@ -204,7 +204,7 @@ def main():
         # Check if any target is currently active
         active_targets = {m["to_agent"] for m in discord_messages if m.get("_target_active")}
         
-        lines = [f"📬 **Marveen Bus — üzenet érkezett** {DISCORD_ROLE_MENTION}"]
+        lines = [f"📬 **Agent Message Bus — üzenet érkezett** {DISCORD_ROLE_MENTION}"]
         
         for msg in discord_messages[:5]:
             from_ = msg.get("from_agent", "?")

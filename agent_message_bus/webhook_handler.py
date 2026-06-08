@@ -29,15 +29,14 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-logger = logging.getLogger("marveen.webhook_handler")
+logger = logging.getLogger("amb.webhook_handler")
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 
-# Real user home (not the profile-overridden HOME env var)
-import pwd as _pwd
+# Standalone: data directory is resolved from the agent_message_bus module
+from agent_message_bus import DATA_DIR as AMB_DATA_DIR
 
-_USER_HOME = Path(_pwd.getpwuid(os.getuid()).pw_dir)
-_HERMES_ROOT = _USER_HOME / ".hermes"
+_AMB_DATA_ROOT = AMB_DATA_DIR
 
 # ── In-memory rate-limit tracking ────────────────────────────────────────────
 
@@ -66,7 +65,7 @@ def _get_state_db_path(target_agent: str) -> Path:
 
     Uses the per-profile state.db: ``~/.hermes/profiles/{agent}/state.db``.
     """
-    return _HERMES_ROOT / "profiles" / target_agent / "state.db"
+    return _AMB_DATA_ROOT / "profiles" / target_agent / "state.db"
 
 
 def _write_trigger_file(
@@ -80,7 +79,7 @@ def _write_trigger_file(
     Always called as a fallback so the target agent's cron / turn-start
     logic can pick up pending messages even if session initiation fails.
     """
-    trigger_dir = _HERMES_ROOT / "profiles" / target_agent / "data" / "marveen"
+    trigger_dir = _AMB_DATA_ROOT / "profiles" / target_agent / "data" / "marveen"
     trigger_dir.mkdir(parents=True, exist_ok=True)
     trigger_path = trigger_dir / "wakeup_pending.json"
 
@@ -157,7 +156,7 @@ def _start_hermes_session(
 
     Returns ``(success, session_id_or_None)``.
     """
-    profile_dir = _HERMES_ROOT / "profiles" / target_agent
+    profile_dir = _AMB_DATA_ROOT / "profiles" / target_agent
     if not profile_dir.exists():
         logger.warning(
             "Profile directory does not exist: %s — cannot start session",
@@ -279,7 +278,7 @@ def handle_wakeup(
     # ── 1. Idempotency check ──────────────────────────────────────────────
     if idempotency_key:
         try:
-            from marveen import _get_db as _marveen_db
+            from agent_message_bus import _get_db as _marveen_db
 
             conn = _marveen_db()
             row = conn.execute(
@@ -309,7 +308,7 @@ def handle_wakeup(
     # ── 2. Circuit breaker check ──────────────────────────────────────────
     circuit_open = False
     try:
-        from marveen.circuit_breaker import is_circuit_open
+        from agent_message_bus.circuit_breaker import is_circuit_open
 
         circuit_open = is_circuit_open(target_agent)
     except Exception as exc:
@@ -386,7 +385,7 @@ def handle_wakeup(
 
         # Record circuit failure
         try:
-            from marveen.circuit_breaker import record_failure
+            from agent_message_bus.circuit_breaker import record_failure
 
             record_failure(target_agent)
         except Exception:
@@ -394,7 +393,7 @@ def handle_wakeup(
 
         # Record metric
         try:
-            from marveen.metrics import record_metric
+            from agent_message_bus.metrics import record_metric
 
             record_metric(
                 "delivery_failure",
@@ -408,7 +407,7 @@ def handle_wakeup(
 
         # Update retry_count in the DB
         try:
-            from marveen import _get_db as _marveen_db
+            from agent_message_bus import _get_db as _marveen_db
 
             conn = _marveen_db()
             conn.execute(
@@ -431,7 +430,7 @@ def handle_wakeup(
     if success:
         # Record circuit success
         try:
-            from marveen.circuit_breaker import record_success
+            from agent_message_bus.circuit_breaker import record_success
 
             record_success(target_agent)
         except Exception:
@@ -439,7 +438,7 @@ def handle_wakeup(
 
         # Mark message as delivered
         try:
-            from marveen import mark_delivered
+            from agent_message_bus import mark_delivered
 
             mark_delivered(message_id)
         except Exception as exc:
@@ -447,7 +446,7 @@ def handle_wakeup(
 
         # Record metric
         try:
-            from marveen.metrics import record_metric
+            from agent_message_bus.metrics import record_metric
 
             latency_ms = (time.time() - start_ts) * 1000
             record_metric(
@@ -474,7 +473,7 @@ def handle_wakeup(
 
     # ── All retries exhausted → dead letter queue ────────────────────────
     try:
-        from marveen import mark_dead
+        from agent_message_bus import mark_dead
 
         mark_dead(message_id, "max retries exhausted (session start failed)")
         logger.warning(
@@ -521,7 +520,7 @@ if __name__ == "__main__":
     # 3. Circuit breaker check
     print("3. Circuit breaker integration:")
     try:
-        from marveen.circuit_breaker import get_circuit_state
+        from agent_message_bus.circuit_breaker import get_circuit_state
 
         state = get_circuit_state("test_cb_agent")
         print(f"   test_cb_agent state: {state}")

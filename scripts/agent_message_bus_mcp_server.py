@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Marveen MCP Server — Hermes Agent Integration
+Agent Message Bus MCP Server — Hermes Agent Integration
 
 Exposes tools for:
 - Agent Message Bus (inter-agent communication)
@@ -8,13 +8,13 @@ Exposes tools for:
 - Dream Engine (nightly consolidation)
 
 Usage:
-    chmod +x ~/.hermes/scripts/marveen_mcp_server.py
-    ~/.hermes/scripts/marveen_mcp_server.py
+    chmod +x ~/.hermes/scripts/agent_message_bus_mcp_server.py
+    ~/.hermes/scripts/agent_message_bus_mcp_server.py
 
 Register in ~/.hermes/config.yaml:
     mcp_servers:
-      marveen:
-        command: "/home/artofphotogrphyy/.hermes/scripts/marveen_mcp_server.py"
+      agent_message_bus:
+        command: "/home/artofphotogrphyy/.hermes/scripts/agent_message_bus_mcp_server.py"
         timeout: 30
         connect_timeout: 5
 """
@@ -26,9 +26,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Ensure marveen module is importable from the central location
+# Ensure agent_message_bus module is importable from the central location
 sys.path.insert(0, str(Path.home() / ".hermes" / "scripts"))
-from marveen import (
+from agent_message_bus import (
     create_message,
     get_messages,
     mark_read,
@@ -45,7 +45,7 @@ from marveen import (
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("marveen-mcp")
+logger = logging.getLogger("amb-mcp")
 
 
 def _json_result(data) -> dict:
@@ -66,7 +66,7 @@ from mcp.server import NotificationOptions, Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool
 
-server = Server("marveen")
+server = Server("agent_message_bus")
 
 
 def _tool(name: str, description: str, inputSchema: dict) -> Tool:
@@ -79,7 +79,7 @@ async def list_tools() -> list[Tool]:
         # --- Agent Message Bus tools ---
         _tool(
             "agent_send_message",
-            "Send an async message to another agent via the Marveen Message Bus. "
+            "Send an async message to another agent via the Agent Message Bus. "
             "Agents: 'general', 'dev', 'research', 'study'. "
             "The from_agent is auto-detected from your profile. "
             "The message will be delivered when the target agent checks their inbox.",
@@ -95,7 +95,7 @@ async def list_tools() -> list[Tool]:
         ),
         _tool(
             "send_bus_message",
-            "Send a strictly typed async message to another agent via the Marveen Message Bus. "
+            "Send a strictly typed async message to another agent via the Agent Message Bus. "
             "This is the PRIMARY tool for inter-agent communication — use it whenever you need "
             "data, handoff a task, request clarification, or alert another agent. "
             "Includes idempotency protection: duplicate messages are detected and rejected.",
@@ -246,8 +246,8 @@ async def list_tools() -> list[Tool]:
         ),
         # --- System tools ---
         _tool(
-            "marveen_status",
-            "Get overall status of the Marveen integration system: "
+            "amb_status",
+            "Get overall status of the Agent Message Bus integration system: "
             "message queue stats, autonomy config, and last dream report.",
             {"type": "object", "properties": {}}
         ),
@@ -270,7 +270,7 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
             priority = arguments.get("priority", 0)
             msg = create_message(from_agent, to_agent, content, priority)
             try:
-                from marveen.webhook_handler import handle_wakeup
+                from agent_message_bus.webhook_handler import handle_wakeup
                 handle_wakeup(target_agent=to_agent, message_id=msg["id"], from_agent=from_agent, priority=priority)
             except Exception:
                 pass
@@ -301,7 +301,7 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
             max_retries = arguments.get("max_retries", 3)
 
             # Validate + insert via create_typed_message
-            from marveen import create_typed_message
+            from agent_message_bus import create_typed_message
             msg = create_typed_message(
                 from_agent=from_agent, to_agent=target, content=content,
                 message_type=msg_type, priority=priority,
@@ -311,7 +311,7 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
             )
 
             # Trigger wakeup via webhook handler
-            from marveen.webhook_handler import handle_wakeup
+            from agent_message_bus.webhook_handler import handle_wakeup
             wakeup = handle_wakeup(
                 target_agent=target, message_id=msg["id"],
                 from_agent=from_agent, priority=priority,
@@ -373,7 +373,7 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
             min_score = arguments.get("min_score", 1.0)
             matches = discover_agents(task, top_k=top_k, min_score=min_score)
             if not matches:
-                return _text_result("Nincs regisztrált Agent Card. Hozz létre egyet ~/.hermes/data/marveen/agent_cards/ alá.")
+                return _text_result("Nincs regisztrált Agent Card. Hozz létre egyet ~/.hermes/data/agent_message_bus/agent_cards/ alá.")
             lines = [f"**🎯 Agent routing — top {len(matches)} találat**\n"]
             for i, m in enumerate(matches, 1):
                 emoji = "🏆" if i == 1 else f"{i}."
@@ -453,7 +453,7 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
             return _text_result(f"**🌙 Dream Engine — {dreams[0].stem}**\n\n{content}")
 
         elif name == "get_message_trace":
-            from marveen import get_message_tree
+            from agent_message_bus import get_message_tree
             cid = arguments["correlation_id"]
             tree = get_message_tree(cid)
             lines = [f"**🔗 Message trace for correlation #{cid}**\n"]
@@ -465,7 +465,7 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
                 )
             return _text_result("\n".join(lines))
 
-        elif name == "marveen_status":
+        elif name == "amb_status":
             # Message queue stats
             pending = get_messages(status="pending", limit=0)
             delivered = get_messages(status="delivered", limit=0)
@@ -487,7 +487,7 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
             # Circuit Breaker states
             cb_agents = ["dev", "general", "research", "study"]
             try:
-                from marveen.circuit_breaker import get_circuit_state as get_cb_state
+                from agent_message_bus.circuit_breaker import get_circuit_state as get_cb_state
                 cb_states = {}
                 for agent in cb_agents:
                     cb_states[agent] = get_cb_state(agent)
@@ -496,7 +496,7 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
             
             # Metrics summary
             try:
-                from marveen.metrics import get_metrics_summary
+                from agent_message_bus.metrics import get_metrics_summary
                 metrics = get_metrics_summary()
             except Exception:
                 metrics = {}
@@ -522,7 +522,7 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
                 metrics_lines.append("- (unavailable)")
             
             return _text_result(
-                "**📊 Marveen Integration Status**\n\n"
+                "**📊 Agent Message Bus Integration Status**\n\n"
                 "**📬 Agent Message Bus**\n"
                 f"- Függőben lévő üzenetek: {len(pending)}\n"
                 f"- Kézbesítve, olvasatlan: {len(delivered)}\n"
@@ -556,7 +556,7 @@ async def main():
             read_stream,
             write_stream,
             InitializationOptions(
-                server_name="marveen",
+                server_name="agent_message_bus",
                 server_version="1.0.0",
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),

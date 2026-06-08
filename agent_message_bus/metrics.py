@@ -22,9 +22,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger("marveen.metrics")
+logger = logging.getLogger("amb.metrics")
 
-# ── Deferred import: DATA_DIR comes from marveen package ──
+# ── Deferred import: DATA_DIR comes from agent_message_bus package ──
 _DATA_DIR: Optional[Path] = None
 _lock = threading.Lock()
 _rotation_lock = threading.Lock()  # separate lock for rotation to avoid deadlocks
@@ -34,7 +34,7 @@ def _get_data_dir() -> Path:
     """Lazy-resolve DATA_DIR from the marveen package."""
     global _DATA_DIR
     if _DATA_DIR is None:
-        from marveen import DATA_DIR as marveen_data_dir
+        from agent_message_bus import DATA_DIR as marveen_data_dir
 
         _DATA_DIR = marveen_data_dir
     return _DATA_DIR
@@ -327,7 +327,7 @@ def get_metrics_summary() -> Dict[str, Any]:
     # Circuit breaker states (import inline to avoid circular dep)
     cb_states: Dict[str, str] = {}
     try:
-        from marveen.circuit_breaker import get_circuit_state as _cb_state
+        from agent_message_bus.circuit_breaker import get_circuit_state as _cb_state
 
         for agent in ("general", "dev", "research", "study"):
             cb_states[agent] = _cb_state(agent)

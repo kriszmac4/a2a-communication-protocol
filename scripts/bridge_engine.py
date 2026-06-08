@@ -1,19 +1,8 @@
 #!/usr/bin/env python3
-"""
-Marveen Bridge Engine — közös LLM Bridge logika.
-
-Minden ágens (General, Dev, Research, Study) ezt használja az
-automatikus üzenetválaszhoz. Védelem a végtelen ciklusok ellen:
-
-  1. AUTO_REPLY típusra SOHA nem válaszol
-  2. chain_depth >= MAX_CHAIN_DEPTH esetén blokkol
-  3. Rate limiting (N üzenet / X másodperc) ugyanazon sender-receiver pair között
-  4. Senders blacklist (saját maguknak nem válaszolnak)
-"""
+"""Agent Message Bus Bridge Engine — shared LLM Bridge logic."""
 
 import json
 import os
-import pwd
 import sqlite3
 import threading
 import time
@@ -21,24 +10,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-# ── Konstansok ─────────────────────────────────────────────────────────────────
+# ── Constants ─────────────────────────────────────────────────────────────────
 
-# Max auto-reply chain depth (0 = original, 1 = first auto-reply, stb.)
+# Max auto-reply chain depth (0 = original, 1 = first auto-reply, etc.)
 MAX_CHAIN_DEPTH = 3
 
-# Rate limiting: max N auto-reply per X másodperc ugyanazon (sender, receiver) pair között
+# Rate limiting: max N auto-replies per X seconds per (sender, receiver) pair
 RATE_LIMIT_MAX = 3
-RATE_LIMIT_WINDOW = 60  # másodperc
+RATE_LIMIT_WINDOW = 60  # seconds
 
-# Senders akiknek sosem válaszolunk
-SENDERS_BLACKLIST = {"auto_responder", "message-router", "marveen_llm_bridge"}
+# Senders we never reply to
+SENDERS_BLACKLIST = {"auto_responder", "message-router", "agent_message_bus_llm_bridge"}
 
-# Üzenet típusok amikre automatikusan válaszolunk
+# Message types we auto-reply to
 AUTO_REPLY_TYPES = {"delegate_task", "task_delegation", "request_data"}
 
-# Hol van a közös adatbázis (kikerüli a Hermes HOME override-ot)
-_SHARED_HOME = Path(pwd.getpwuid(os.getuid()).pw_dir) / ".hermes"
-DATA_DIR = _SHARED_HOME / "data" / "marveen"
+# Where is the shared database
+_AMB_DATA_DIR = Path(os.environ.get("AMB_DATA_DIR", Path.home() / ".a2a-protocol"))
+DATA_DIR = _AMB_DATA_DIR
 DB_PATH = DATA_DIR / "agent_messages.db"
 
 
@@ -50,7 +39,7 @@ class RateLimitBucket:
     def is_limited(self, max_hits: int = RATE_LIMIT_MAX,
                    window: int = RATE_LIMIT_WINDOW) -> bool:
         now = time.time()
-        # Szűrjük a régieket
+        # Filter old timestamps
         self.timestamps = [t for t in self.timestamps if now - t < window]
         if len(self.timestamps) >= max_hits:
             return True
@@ -64,7 +53,7 @@ _rate_lock = threading.Lock()
 
 
 def _check_rate_limit(sender: str, receiver: str) -> bool:
-    """True ha rate limit alatt vagyunk (nem limitált)."""
+    """Returns True if under rate limit (not limited)."""
     key = (sender, receiver)
     with _rate_lock:
         if key not in _rate_limiters:
@@ -72,16 +61,15 @@ def _check_rate_limit(sender: str, receiver: str) -> bool:
         return not _rate_limiters[key].is_limited()
 
 
-# ── Adatbázis ──────────────────────────────────────────────────────────────────
+# ── Database ──────────────────────────────────────────────────────────────────
 
 def get_db() -> sqlite3.Connection:
-    """Megnyitja a közös adatbázist és migrál ha kell."""
+    """Open the shared database and migrate if needed."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
-    # Auto-migration: add missing columns
     _migrate_db(conn)
     return conn
 
@@ -98,13 +86,13 @@ def _migrate_db(conn: sqlite3.Connection):
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE agent_messages ADD COLUMN {col} {dtype}")
-    except Exception as e:
+    except Exception:
         pass  # Non-blocking
 
 
 def get_pending_messages(conn: sqlite3.Connection, target: str,
                          limit: int = 10) -> list[dict]:
-    """Lekéri a target agent-nek címzett pending/delivered üzeneteket."""
+    """Fetch pending/delivered messages addressed to the target agent."""
     rows = conn.execute(
         """SELECT id, from_agent, to_agent, content, priority,
                   status, created_at, message_type, chain_depth, is_auto_reply
@@ -126,24 +114,22 @@ def write_bridge_response(
     priority: int = 0,
     chain_depth: int = 1,
 ) -> Optional[int]:
-    """Bridge választ ír a buszba AUTO_REPLY típussal + chain_depth tracking.
+    """Write a bridge response to the bus as AUTO_REPLY type with chain_depth tracking.
 
     Args:
-        conn: DB kapcsolat
-        to_agent: Kinek címezzük (az eredeti feladó)
-        from_agent: Kitől jön a válasz (a target, aki válaszol)
-        llm_text: Az LLM válasz szövege
-        original_id: Az eredeti üzenet ID-ja (amire válaszolunk)
-        priority: Prioritás
-        chain_depth: Az új üzenet chain_depth értéke
+        conn: DB connection
+        to_agent: Target (original sender)
+        from_agent: Sender (the target agent responding)
+        llm_text: LLM response text
+        original_id: Original message ID being replied to
+        priority: Priority level
+        chain_depth: Chain depth for the new message
 
     Returns:
-        Az új üzenet ID-ja, vagy None ha hiba
+        New message ID, or None on error
     """
     now = time.time()
-
-    # Válasz JSON-be csomagolása
-    summary = f"Auto-válasz {from_agent}→{to_agent}"
+    summary = f"Auto-reply {from_agent}→{to_agent}"
     body = llm_text[:2000]
     content = json.dumps({"summary": summary, "body": body}, ensure_ascii=False)
 
@@ -158,7 +144,7 @@ def write_bridge_response(
         )
         new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-        # Eredeti üzenet done-ra
+        # Mark original as done
         conn.execute(
             "UPDATE agent_messages SET status = 'done', completed_at = ? WHERE id = ?",
             (now, original_id),
@@ -167,12 +153,12 @@ def write_bridge_response(
         return new_id
     except Exception as e:
         conn.rollback()
-        print(f"❌ Bridge response write failed: {e}", file=__import__('sys').stderr)
+        print(f"Bridge response write failed: {e}", file=__import__('sys').stderr)
         return None
 
 
 def mark_read(conn: sqlite3.Connection, msg_id: int) -> bool:
-    """Üzenet read-re állítása (nem válaszolunk rá)."""
+    """Mark a message as read (don't reply to it)."""
     cur = conn.execute(
         "UPDATE agent_messages SET status = 'read' WHERE id = ? AND status IN ('pending', 'delivered')",
         (msg_id,),
@@ -182,7 +168,7 @@ def mark_read(conn: sqlite3.Connection, msg_id: int) -> bool:
 
 
 def mark_failed(conn: sqlite3.Connection, msg_id: int) -> bool:
-    """Üzenet failed-re állítása."""
+    """Mark a message as failed."""
     cur = conn.execute(
         "UPDATE agent_messages SET status = 'failed' WHERE id = ? AND status IN ('pending', 'delivered')",
         (msg_id,),
@@ -191,18 +177,18 @@ def mark_failed(conn: sqlite3.Connection, msg_id: int) -> bool:
     return cur.rowcount > 0
 
 
-# ── Core logika ────────────────────────────────────────────────────────────────
+# ── Core logic ────────────────────────────────────────────────────────────────
 
 def should_auto_reply(msg: dict, agent_id: str) -> tuple[bool, str]:
-    """Ellenőrzi, hogy egy üzenetre automatikusan válaszolhatunk-e.
+    """Check whether we can auto-reply to a message.
 
     Args:
-        msg: Az üzenet dict (from get_pending_messages)
-        agent_id: A saját ágensünk neve (pl. 'dev', 'research')
+        msg: Message dict (from get_pending_messages)
+        agent_id: Our own agent name (e.g. 'dev', 'research')
 
     Returns:
-        (True, "reason") ha válaszolhatunk
-        (False, "reason") ha nem
+        (True, "reason") if we can reply
+        (False, "reason") if not
     """
     msg_id = msg["id"]
     from_agent = msg["from_agent"]
@@ -212,41 +198,41 @@ def should_auto_reply(msg: dict, agent_id: str) -> tuple[bool, str]:
     chain_depth = msg.get("chain_depth") or 0
     is_auto_reply = msg.get("is_auto_reply") or 0
 
-    # ── VÉDELEM 1: Soha ne válaszolj AUTO_REPLY típusra ──
+    # ── GUARD 1: Never reply to AUTO_REPLY type ──
     if msg_type == "auto_reply":
-        return False, f"#{msg_id}: message_type=auto_reply → láncvédelem (Soha ne válaszolj auto_reply-re)"
+        return False, f"#{msg_id}: message_type=auto_reply → chain protection"
 
-    # ── VÉDELEM 2: is_auto_reply flag ──
+    # ── GUARD 2: is_auto_reply flag ──
     if is_auto_reply:
-        return False, f"#{msg_id}: is_auto_reply=1 → láncvédelem"
+        return False, f"#{msg_id}: is_auto_reply=1 → chain protection"
 
-    # ── VÉDELEM 3: Soha ne válaszolj a blacklist-en lévőknek ──
+    # ── GUARD 3: Never reply to blacklisted senders ──
     if from_agent in SENDERS_BLACKLIST:
-        return False, f"#{msg_id}: from_agent={from_agent} → blacklist"
+        return False, f"#{msg_id}: from_agent={from_agent} → blacklisted"
 
-    # ── VÉDELEM 4: Ne válaszolj magadnak ──
+    # ── GUARD 4: Don't reply to yourself ──
     if from_agent == agent_id:
-        return False, f"#{msg_id}: from_agent={from_agent} → saját magadnak ne válaszolj"
+        return False, f"#{msg_id}: from_agent={from_agent} → self-message"
 
-    # ── VÉDELEM 5: Csak bizonyos típusokra ──
+    # ── GUARD 5: Only specific message types ──
     if msg_type not in AUTO_REPLY_TYPES:
-        return False, f"#{msg_id}: message_type={msg_type} → nem auto-reply típus (csak: {AUTO_REPLY_TYPES})"
+        return False, f"#{msg_id}: message_type={msg_type} → not auto-reply type (only: {AUTO_REPLY_TYPES})"
 
-    # ── VÉDELEM 6: Chain depth limit ──
+    # ── GUARD 6: Chain depth limit ──
     if chain_depth >= MAX_CHAIN_DEPTH:
-        return False, f"#{msg_id}: chain_depth={chain_depth} >= MAX({MAX_CHAIN_DEPTH}) → max mélység"
+        return False, f"#{msg_id}: chain_depth={chain_depth} >= MAX({MAX_CHAIN_DEPTH}) → max depth reached"
 
-    # ── VÉDELEM 7: Auto-responder üzenetek kiszűrése ──
+    # ── GUARD 7: Filter auto-responder messages ──
     if content.startswith("📥") or content.startswith("📨") or content.startswith("🤖"):
-        return False, f"#{msg_id}: auto-responder prefix → nem válaszolunk"
+        return False, f"#{msg_id}: auto-responder prefix → skipping"
 
-    # ── VÉDELEM 8: Rate limit ──
+    # ── GUARD 8: Rate limit ──
     if not _check_rate_limit(from_agent, to_agent):
         return False, f"#{msg_id}: rate limit exceeded for {from_agent}→{to_agent}"
 
-    return True, f"#{msg_id}: OK → auto-reply engedélyezve (depth={chain_depth})"
+    return True, f"#{msg_id}: OK → auto-reply allowed (depth={chain_depth})"
 
 
 def compute_new_depth(msg: dict) -> int:
-    """Kiszámolja az új üzenet chain_depth értékét."""
+    """Calculate the chain_depth for the reply message."""
     return (msg.get("chain_depth") or 0) + 1

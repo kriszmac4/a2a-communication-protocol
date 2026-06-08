@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Marveen Integration — Core Module
+Agent Message Bus — A2A Communication Protocol Core Module
 
 Three systems:
 1. Agent Message Bus (inter-agent communication)
 2. Gradual Autonomy (heartbeat + trust levels)
 3. Dream Engine (nightly consolidation)
 
-Data directory: ~/.hermes/data/marveen/
+Data directory: configurable via AMB_DATA_DIR env var (default: ~/.a2a-protocol/)
 """
 
 import json
@@ -21,13 +21,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from marveen.permissions import PermissionError, check_permission
+from agent_message_bus.permissions import PermissionError, check_permission
 
-logger = logging.getLogger("marveen")
+logger = logging.getLogger("amb")
 
 # --- Paths ---
-HERMES_HOME = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
-DATA_DIR = HERMES_HOME / "data" / "marveen"
+# Standalone: use AMB_DATA_DIR or default to ~/.a2a-protocol/
+_AMB_DATA_DIR = Path(os.environ.get("AMB_DATA_DIR", Path.home() / ".a2a-protocol"))
+DATA_DIR = _AMB_DATA_DIR
 DREAMS_DIR = DATA_DIR / "dreams"
 MESSAGES_DB = DATA_DIR / "agent_messages.db"
 AUTONOMY_CONFIG = DATA_DIR / "autonomy-config.json"
@@ -406,7 +407,7 @@ def create_typed_message(
     created_at, message_type, idempotency_key, correlation_id, parent_message_id,
     expires_at — same shape as create_message() but with typed extras.
     """
-    from marveen.schemas import SendBusMessage, MessageType
+    from agent_message_bus.schemas import SendBusMessage, MessageType
 
     # Auto-generate idempotency_key if not provided
     if idempotency_key is None:

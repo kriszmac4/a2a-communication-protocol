@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Marveen LLM Bridge — Study ágens automatikus válaszadó.
+Agent Message Bus LLM Bridge — Study ágens automatikus válaszadó.
 
 no_agent watchdog — közvetlen LLM API hívással válaszol a buszon
 érkező üzenetekre.
@@ -33,7 +33,7 @@ from bridge_engine import (
 AGENT_ID = "study"
 
 API_BASE = os.environ.get("OPENCODE_BASE_URL", "https://opencode.ai/zen/v1")
-MODEL = os.environ.get("MARVEEN_LLM_MODEL", "nemotron-3-ultra-free")
+MODEL = os.environ.get("AMB_LLM_MODEL", "nemotron-3-ultra-free")
 REQUEST_TIMEOUT = 300
 MAX_PROMPT_LEN = 4000
 
@@ -46,7 +46,7 @@ AGENT_PERSONA = (
 
 SYSTEM_PROMPT = (
     f"{AGENT_PERSONA}\n\n"
-    "Most egy üzenet érkezett hozzád a Marveen Message Buson keresztül. "
+    "Most egy üzenet érkezett hozzád a Agent Message Buson keresztül. "
     "Válaszolj a buszon keresztül vissza. "
     "A válaszod legyen tömör, lényegretörő, magyar nyelvű."
 )

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Marveen LLM Bridge — General ágens automatikus válaszadó.
+Agent Message Bus LLM Bridge — General ágens automatikus válaszadó.
 
 no_agent watchdog — közvetlen LLM API hívással válaszol a buszon
 érkező üzenetekre, kikerülve a Hermes agent réteg MCP tool korlátait.
@@ -40,7 +40,7 @@ AGENT_ID = "general"
 
 # LLM API konfig
 API_BASE = os.environ.get("OPENCODE_BASE_URL", "https://opencode.ai/zen/v1")
-MODEL = os.environ.get("MARVEEN_LLM_MODEL", "nemotron-3-ultra-free")
+MODEL = os.environ.get("AMB_LLM_MODEL", "nemotron-3-ultra-free")
 REQUEST_TIMEOUT = 300  # másodperc (LLM API néha lassú)
 
 # Max üzenet hossz amit az LLM-nek küldünk
@@ -152,7 +152,7 @@ def main() -> int:
             persona = AGENT_PERSONAS.get(AGENT_ID, DEFAULT_PERSONA)
             system_prompt = (
                 f"{persona}\n\n"
-                f"Most egy üzenet érkezett hozzád a Marveen Message Buson keresztül "
+                f"Most egy üzenet érkezett hozzád a Agent Message Buson keresztül "
                 f"a `{from_agent}` agent-től. "
                 f"Válaszolj a buszon keresztül vissza. "
                 f"A válaszod legyen tömör, lényegretörő, magyar nyelvű."

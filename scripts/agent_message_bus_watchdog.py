@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Marveen Bus Watchdog — LLM-free monitor for inter-agent messages (A2A upgrade)
+Agent Message Bus Bus Watchdog — LLM-free monitor for inter-agent messages (A2A upgrade)
 
-Checks the shared Marveen message DB for pending messages that haven't been
+Checks the shared Agent Message Bus message DB for pending messages that haven't been
 picked up by the target agent. Outputs a warning if any message is older than
 STALE_SECONDS (default: 60s).
 
@@ -23,13 +23,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # --- Configuration ---
-STALE_SECONDS = int(os.environ.get("MARVEEN_WATCHDOG_STALE", 60))
-MARVEEN_DB = os.environ.get(
-    "MARVEEN_DB_PATH",
-    "/home/artofphotogrphyy/.hermes/data/marveen/agent_messages.db"
+STALE_SECONDS = int(os.environ.get("AMB_WATCHDOG_STALE", 60))
+AMB_DB = os.environ.get(
+    "AMB_DB_PATH",
+    str(Path(os.environ.get("AMB_DATA_DIR", Path.home() / ".a2a-protocol")) / "agent_messages.db")
 )
-HERMES_HOME = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
-TRIGGER_FILE = Path("/tmp/marveen-auto-trigger")
+TRIGGER_FILE = Path("/tmp/amb-auto-trigger")
 
 # Agent display names
 AGENT_NAMES = {
@@ -44,12 +43,12 @@ AGENT_NAMES = {
     "news": "📰 News (archived)",
 }
 
-NOTIFY_SCRIPT = Path(__file__).parent / "marveen" / "notify_target.py"
+NOTIFY_SCRIPT = Path(__file__).parent / "agent_message_bus" / "notify_target.py"
 
 
 def _get_active_sessions() -> list[str]:
     """Check state.db for currently active agent sessions."""
-    state_db = HERMES_HOME / "state.db"
+    state_db = Path(os.environ.get("AMB_DATA_DIR", Path.home() / ".a2a-protocol")) / "state.db"
     if not state_db.exists():
         return []
     try:
@@ -94,10 +93,10 @@ def _read_triggers() -> list[dict]:
 
 def _check_dead_messages() -> list[dict]:
     """DLQ check: find messages stuck in 'dead' status that need human attention."""
-    if not os.path.exists(MARVEEN_DB):
+    if not os.path.exists(AMB_DB):
         return []
     try:
-        conn = sqlite3.connect(MARVEEN_DB)
+        conn = sqlite3.connect(AMB_DB)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT id, from_agent, to_agent, content, priority, "
@@ -117,10 +116,10 @@ def _expire_stale_messages(now: float) -> int:
 
     Returns the number of messages expired.
     """
-    if not os.path.exists(MARVEEN_DB):
+    if not os.path.exists(AMB_DB):
         return 0
     try:
-        conn = sqlite3.connect(MARVEEN_DB)
+        conn = sqlite3.connect(AMB_DB)
         conn.execute(
             "UPDATE agent_messages SET status = 'expired', completed_at = ? "
             "WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at < ?",
@@ -141,10 +140,10 @@ def _retry_failed_messages(now: float) -> int:
     so they get another delivery attempt.
     Returns the number of messages retried.
     """
-    if not os.path.exists(MARVEEN_DB):
+    if not os.path.exists(AMB_DB):
         return 0
     try:
-        conn = sqlite3.connect(MARVEEN_DB)
+        conn = sqlite3.connect(AMB_DB)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT id, from_agent, to_agent, retry_count, max_retries "
@@ -173,10 +172,10 @@ def _retry_failed_messages(now: float) -> int:
 
 def _check_stale_high_priority_pending(now: float) -> list[dict]:
     """Find pending messages that are high priority and stale."""
-    if not os.path.exists(MARVEEN_DB):
+    if not os.path.exists(AMB_DB):
         return []
     try:
-        conn = sqlite3.connect(MARVEEN_DB)
+        conn = sqlite3.connect(AMB_DB)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT id, from_agent, to_agent, content, priority, created_at "
@@ -191,9 +190,9 @@ def _check_stale_high_priority_pending(now: float) -> list[dict]:
 
 
 def check_messages() -> list:
-    if not os.path.exists(MARVEEN_DB):
+    if not os.path.exists(AMB_DB):
         return []
-    conn = sqlite3.connect(MARVEEN_DB)
+    conn = sqlite3.connect(AMB_DB)
     conn.row_factory = sqlite3.Row
     cursor = conn.execute(
         "SELECT id, from_agent, to_agent, content, priority, created_at, "
@@ -343,10 +342,10 @@ def main():
             status_icons += " ⏳TTL"
         if has_triggers:
             status_icons += " 🚨TRIGGER"
-        print(f"📬 **Marveen Bus Watchdog** — {len(messages)} függő üzenetből {total_stale} régi"
+        print(f"📬 **Agent Message Bus Bus Watchdog** — {len(messages)} függő üzenetből {total_stale} régi"
               f"{status_icons}"
               if messages else
-              f"📬 **Marveen Bus Watchdog** — figyelés aktív{status_icons}")
+              f"📬 **Agent Message Bus Bus Watchdog** — figyelés aktív{status_icons}")
         print(f"(Frissítve: {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')})")
         print()
         print("\n".join(output_lines).strip())

@@ -2,7 +2,7 @@
 """Quick Marveen DB check — used by the processor cron."""
 import sys
 sys.path.insert(0, '/home/artofphotogrphyy/.hermes/scripts')
-from marveen import get_pending_messages, get_messages
+from agent_message_bus import get_pending_messages, get_messages
 
 pending = get_pending_messages()
 print(f"PENDING_COUNT:{len(pending)}")

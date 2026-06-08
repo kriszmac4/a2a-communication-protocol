@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Marveen Auto-Responder — no_agent watchdog cron (A2A upgrade)
+Agent Message Bus Auto-Responder — no_agent watchdog cron (A2A upgrade)
 
-Pollos the Marveen bus for pending messages and:
+Pollos the Agent Message Bus bus for pending messages and:
 1. Auto-responds with pre-defined templates (existing behavior)
 2. Detects task messages ([skill=...]) and notifies General
 3. Priority-aware: high/urgent messages trigger Discord push notification
@@ -21,10 +21,10 @@ import sys
 import time
 from pathlib import Path
 
-# Resolve marveen module from the script directory
+# Resolve agent_message_bus module from the script directory
 import os as _os
 sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from marveen import (
+from agent_message_bus import (
     create_message,
     get_pending_messages,
     mark_delivered,
@@ -35,9 +35,9 @@ from marveen import (
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("marveen-auto-responder")
+logger = logging.getLogger("amb-auto-responder")
 
-TRIGGER_FILE = Path("/tmp/marveen-auto-trigger")
+TRIGGER_FILE = Path("/tmp/amb-auto-trigger")
 
 
 # ── Response Templates ──────────────────────────────────────────────────

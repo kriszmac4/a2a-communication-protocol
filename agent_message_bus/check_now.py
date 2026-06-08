@@ -3,7 +3,7 @@
 import sys
 import os
 sys.path.insert(0, os.path.expanduser("~/.hermes/scripts"))
-from marveen import get_pending_messages, get_messages
+from agent_message_bus import get_pending_messages, get_messages
 
 pending = get_pending_messages()
 print(f"PENDING:{len(pending)}")
