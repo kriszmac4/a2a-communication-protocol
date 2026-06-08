@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check pending Marveen messages via DB directly."""
+"""Check pending AMB messages via DB directly."""
 import sys
 import os
 sys.path.insert(0, os.path.expanduser("~/.hermes/scripts"))

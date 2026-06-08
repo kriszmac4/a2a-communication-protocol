@@ -1,5 +1,5 @@
 """
-Marveen AuthZ — Permission Matrix & Check
+AMB AuthZ — Permission Matrix & Check
 
 Permission matrix governing which message types each agent pair may exchange.
 """

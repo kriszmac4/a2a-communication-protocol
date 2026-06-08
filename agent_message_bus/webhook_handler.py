@@ -2,7 +2,7 @@
 """
 agent_message_bus/webhook_handler.py — Wakeup Endpoint Handler
 
-Implements the POST /api/agent_message_bus/wakeup handler logic. This module is NOT an
+Implements the POST /api/amb/wakeup handler logic. This module is NOT an
 HTTP server — it exposes ``handle_wakeup()``, a callable function invoked by the
 MCP server after a message is created or retried.
 
@@ -33,10 +33,11 @@ logger = logging.getLogger("amb.webhook_handler")
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 
-# Standalone: data directory is resolved from the agent_message_bus module
-from agent_message_bus import DATA_DIR as AMB_DATA_DIR
+# Real user home (not the profile-overridden HOME env var)
+import pwd as _pwd
 
-_AMB_DATA_ROOT = AMB_DATA_DIR
+_USER_HOME = Path(_pwd.getpwuid(os.getuid()).pw_dir)
+_HERMES_ROOT = _USER_HOME / ".hermes"
 
 # ── In-memory rate-limit tracking ────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ def _get_state_db_path(target_agent: str) -> Path:
 
     Uses the per-profile state.db: ``~/.hermes/profiles/{agent}/state.db``.
     """
-    return _AMB_DATA_ROOT / "profiles" / target_agent / "state.db"
+    return _HERMES_ROOT / "profiles" / target_agent / "state.db"
 
 
 def _write_trigger_file(
@@ -79,7 +80,7 @@ def _write_trigger_file(
     Always called as a fallback so the target agent's cron / turn-start
     logic can pick up pending messages even if session initiation fails.
     """
-    trigger_dir = _AMB_DATA_ROOT / "profiles" / target_agent / "data" / "agent_message_bus"
+    trigger_dir = _HERMES_ROOT / "profiles" / target_agent / "data" / "agent_message_bus"
     trigger_dir.mkdir(parents=True, exist_ok=True)
     trigger_path = trigger_dir / "wakeup_pending.json"
 
@@ -151,12 +152,12 @@ def _start_hermes_session(
     Equivalent to::
 
         HERMES_HOME=~/.hermes/profiles/{target_agent} hermes chat \\
-            --query "Marveen: new message from {from_agent} (msg #{message_id})" \\
+            --query "AMB: new message from {from_agent} (msg #{message_id})" \\
             --quiet
 
     Returns ``(success, session_id_or_None)``.
     """
-    profile_dir = _AMB_DATA_ROOT / "profiles" / target_agent
+    profile_dir = _HERMES_ROOT / "profiles" / target_agent
     if not profile_dir.exists():
         logger.warning(
             "Profile directory does not exist: %s — cannot start session",
@@ -166,7 +167,7 @@ def _start_hermes_session(
 
     hermes_bin = _get_hermes_bin()
     query = (
-        f"Marveen: new message from {from_agent} "
+        f"AMB: new message from {from_agent} "
         f"(msg #{message_id}). Check agent_read_messages()."
     )
 
@@ -251,7 +252,7 @@ def handle_wakeup(
     target_agent : str
         The agent to wake up (e.g. ``"study"``, ``"dev"``).
     message_id : int
-        The ID of the message in the Marveen message bus.
+        The ID of the message in the Agent Message Bus.
     from_agent : str
         The agent that sent the message.
     priority : int
@@ -278,9 +279,9 @@ def handle_wakeup(
     # ── 1. Idempotency check ──────────────────────────────────────────────
     if idempotency_key:
         try:
-            from agent_message_bus import _get_db as _agent_message_bus_db
+            from agent_message_bus import _get_db as _amb_db
 
-            conn = _agent_message_bus_db()
+            conn = _amb_db()
             row = conn.execute(
                 "SELECT status FROM agent_messages WHERE idempotency_key = ?",
                 (idempotency_key,),
@@ -407,9 +408,9 @@ def handle_wakeup(
 
         # Update retry_count in the DB
         try:
-            from agent_message_bus import _get_db as _agent_message_bus_db
+            from agent_message_bus import _get_db as _amb_db
 
-            conn = _agent_message_bus_db()
+            conn = _amb_db()
             conn.execute(
                 "UPDATE agent_messages SET retry_count = ? WHERE id = ?",
                 (retry_count, message_id),

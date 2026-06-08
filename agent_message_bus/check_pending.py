@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Quick script to check pending Marveen messages."""
+"""Quick script to check pending AMB messages."""
 import sys
 import os
 sys.path.insert(0, os.path.expanduser("~/.hermes/scripts"))

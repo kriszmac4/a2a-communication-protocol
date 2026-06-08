@@ -1,5 +1,5 @@
 #!/home/artofphotogrphyy/.hermes/.venv/bin/python3
-"""Quick Marveen DB check — used by the processor cron."""
+"""Quick AMB DB check — used by the processor cron."""
 import sys
 sys.path.insert(0, '/home/artofphotogrphyy/.hermes/scripts')
 from agent_message_bus import get_pending_messages, get_messages

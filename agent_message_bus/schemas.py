@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Marveen Message Bus — Pydantic schemas for typed A2A communication."""
+"""Agent Message Bus — Pydantic schemas for typed A2A communication."""
 
 from enum import Enum
 from typing import Any, Optional

@@ -30,9 +30,9 @@ def _get_data_dir() -> Path:
     """Lazy-resolve DATA_DIR from the agent_message_bus package."""
     global _DATA_DIR
     if _DATA_DIR is None:
-        from agent_message_bus import DATA_DIR as agent_message_bus_data_dir
+        from agent_message_bus import DATA_DIR as amb_data_dir
 
-        _DATA_DIR = agent_message_bus_data_dir
+        _DATA_DIR = amb_data_dir
     return _DATA_DIR
 
 

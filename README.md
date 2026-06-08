@@ -15,6 +15,12 @@
 
 </div>
 
+<div align="center">
+
+[![pip install](https://img.shields.io/badge/pip%20install-a2a--communication--protocol-7c3aed?style=flat-square)](https://pypi.org/project/a2a-communication-protocol/)
+
+</div>
+
 ---
 
 **Pull-based agent-to-agent communication bus for Hermes Agent profiles.**  
@@ -141,6 +147,14 @@ pending → delivered → read → done
 | **Blacklist** | `auto_responder`, `message-router` senders are excluded |
 
 ## 🚀 Installation
+
+### pip install
+
+```bash
+pip install a2a-communication-protocol
+```
+
+### Or install from source
 
 ```bash
 # 1. Copy the core package to your Hermes profile

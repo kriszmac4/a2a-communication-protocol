@@ -5,7 +5,7 @@
 - Python 3.11+
 - SQLite3
 
-## 1. Marveen modul telepítése
+## 1. Agent Message Bus modul telepítése
 
 ```bash
 # Másold a agent_message_bus/ modult a Hermes scripts könyvtárába

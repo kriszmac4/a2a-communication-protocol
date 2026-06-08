@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Agent Message Bus — A2A Communication Protocol Core Module
+Agent Message Bus Integration — Core Module
 
 Three systems:
 1. Agent Message Bus (inter-agent communication)
 2. Gradual Autonomy (heartbeat + trust levels)
 3. Dream Engine (nightly consolidation)
 
-Data directory: configurable via AMB_DATA_DIR env var (default: ~/.a2a-protocol/)
+Data directory: ~/.hermes/data/agent_message_bus/
 """
 
 import json
@@ -26,9 +26,8 @@ from agent_message_bus.permissions import PermissionError, check_permission
 logger = logging.getLogger("amb")
 
 # --- Paths ---
-# Standalone: use AMB_DATA_DIR or default to ~/.a2a-protocol/
-_AMB_DATA_DIR = Path(os.environ.get("AMB_DATA_DIR", Path.home() / ".a2a-protocol"))
-DATA_DIR = _AMB_DATA_DIR
+HERMES_HOME = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+DATA_DIR = HERMES_HOME / "data" / "agent_message_bus"
 DREAMS_DIR = DATA_DIR / "dreams"
 MESSAGES_DB = DATA_DIR / "agent_messages.db"
 AUTONOMY_CONFIG = DATA_DIR / "autonomy-config.json"
@@ -157,7 +156,11 @@ def _init_db(conn: sqlite3.Connection):
                             correlation_id INTEGER,
                             parent_message_id INTEGER,
                             expires_at REAL,
-                            retry_count INTEGER NOT NULL DEFAULT 0
+                            retry_count INTEGER NOT NULL DEFAULT 0,
+                            max_retries INTEGER NOT NULL DEFAULT 3,
+                            chain_depth INTEGER NOT NULL DEFAULT 0,
+                            reply_to INTEGER,
+                            is_auto_reply INTEGER NOT NULL DEFAULT 0
                         )
                     """)
                     conn.execute("INSERT INTO agent_messages_new SELECT * FROM agent_messages")
@@ -1063,7 +1066,7 @@ def open_message_thread(msg_id: int) -> bool:
             headers={
                 "Authorization": f"Bot {token}",
                 "Content-Type": "application/json",
-                "User-Agent": "MarveenBot/1.0",
+                "User-Agent": "AMBBot/1.0",
             },
             method="POST",
         )

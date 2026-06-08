@@ -1,8 +1,8 @@
-# Marveen Message Bus — Architektúra
+# Agent Message Bus — Architektúra
 
 ## Áttekintés
 
-A Marveen Message Bus egy pull-based agent-to-agent kommunikációs busz, ami Hermes profile-ok közötti aszinkron üzenetküldést tesz lehetővé. SQLite adatbázisra épül, MCP tool-okon keresztül érhető el az agentek számára, és cron job-ok biztosítják az autonóm működést.
+Az Agent Message Bus egy pull-based agent-to-agent kommunikációs busz, ami Hermes profile-ok közötti aszinkron üzenetküldést tesz lehetővé. SQLite adatbázisra épül, MCP tool-okon keresztül érhető el az agentek számára, és cron job-ok biztosítják az autonóm működést.
 
 ## Rétegek
 
@@ -29,18 +29,18 @@ Agentek számára elérhető tool-ok:
 ## Adatfolyam
 
 ```
-┌─────────┐     ┌──────────────┐     ┌─────────┐
-│ Agent A │────▶│ Marveen Bus  │────▶│ Agent B │
-│ (küldő) │     │  (SQLite)    │     │(címzett)│
-└─────────┘     └──────┬───────┘     └─────────┘
-                       │
-               ┌───────▼───────┐
-               │  Cron réteg   │
-               │  • Router     │
-               │  • Responder  │
-               │  • Watchdog   │
-               │  • Bridge-ek  │
-               └───────────────┘
+┌─────────┐     ┌─────────────────────┐     ┌─────────┐
+│ Agent A │────▶│   Agent Message Bus  │────▶│ Agent B │
+│ (küldő) │     │       (SQLite)       │     │(címzett)│
+└─────────┘     └──────────┬───────────┘     └─────────┘
+                           │
+                   ┌───────▼────────┐
+                   │   Cron réteg    │
+                   │  • Router      │
+                   │  • Responder   │
+                   │  • Watchdog    │
+                   │  • Bridge-ek   │
+                   └────────────────┘
 ```
 
 ## Loop Protection
