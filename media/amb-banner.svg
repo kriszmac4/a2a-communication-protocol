@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a1a"/>
+      <stop offset="100%" style="stop-color:#4a1a6e;stop-opacity:0.3"/>
+    </linearGradient>
+    <linearGradient id="accent1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c3aed"/>
+      <stop offset="100%" style="stop-color:#a855f7"/>
+    </linearGradient>
+    <linearGradient id="accent2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="accent3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#fbbf24"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c3aed;stop-opacity:0.3"/>
+      <stop offset="100%" style="stop-color:#a855f7;stop-opacity:0"/>
+    </linearGradient>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="3"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="bigGlow">
+      <feGaussianBlur stdDeviation="8"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="640" fill="url(#bg)"/>
+
+  <!-- Subtle grid -->
+  <g stroke="#ffffff" stroke-opacity="0.02" stroke-width="1">
+    <line x1="0" y1="160" x2="1280" y2="160"/>
+    <line x1="0" y1="320" x2="1280" y2="320"/>
+    <line x1="0" y1="480" x2="1280" y2="480"/>
+    <line x1="320" y1="0" x2="320" y2="640"/>
+    <line x1="640" y1="0" x2="640" y2="640"/>
+    <line x1="960" y1="0" x2="960" y2="640"/>
+  </g>
+
+  <!-- Glow orb -->
+  <circle cx="640" cy="250" r="180" fill="url(#glow)" filter="url(#bigGlow)"/>
+
+  <!-- Central hub (hexagon) -->
+  <g filter="url(#softGlow)">
+    <polygon points="640,140 760,200 760,320 640,380 520,320 520,200"
+             fill="none" stroke="url(#accent1)" stroke-width="2.5" stroke-opacity="0.5"/>
+    <polygon points="640,170 730,215 730,305 640,350 550,305 550,215"
+             fill="url(#accent1)" fill-opacity="0.15" stroke="url(#accent1)" stroke-width="1.5"/>
+    <text x="640" y="268" font-family="monospace" font-size="10" fill="#c4b5fd" text-anchor="middle">MESSAGE</text>
+    <text x="640" y="282" font-family="monospace" font-size="10" fill="#c4b5fd" text-anchor="middle">BUS</text>
+  </g>
+
+  <!-- Agent nodes around the hub -->
+  <!-- General Agent (top-left) -->
+  <g filter="url(#softGlow)">
+    <rect x="140" y="100" width="140" height="50" rx="8"
+          fill="url(#accent2)" fill-opacity="0.15" stroke="url(#accent2)" stroke-width="1.5"/>
+    <text x="210" y="130" font-family="monospace" font-size="12" fill="#22d3ee" text-anchor="middle">General Agent</text>
+  </g>
+
+  <!-- Dev Agent (top-right) -->
+  <g filter="url(#softGlow)">
+    <rect x="1000" y="100" width="140" height="50" rx="8"
+          fill="url(#accent3)" fill-opacity="0.15" stroke="url(#accent3)" stroke-width="1.5"/>
+    <text x="1070" y="130" font-family="monospace" font-size="12" fill="#fbbf24" text-anchor="middle">Dev Agent</text>
+  </g>
+
+  <!-- Study Agent (bottom-left) -->
+  <g filter="url(#softGlow)">
+    <rect x="140" y="400" width="140" height="50" rx="8"
+          fill="url(#accent3)" fill-opacity="0.15" stroke="url(#accent3)" stroke-width="1.5"/>
+    <text x="210" y="430" font-family="monospace" font-size="12" fill="#fbbf24" text-anchor="middle">Study Agent</text>
+  </g>
+
+  <!-- Research Agent (bottom-right) -->
+  <g filter="url(#softGlow)">
+    <rect x="1000" y="400" width="140" height="50" rx="8"
+          fill="url(#accent2)" fill-opacity="0.15" stroke="url(#accent2)" stroke-width="1.5"/>
+    <text x="1070" y="430" font-family="monospace" font-size="12" fill="#22d3ee" text-anchor="middle">Research Agent</text>
+  </g>
+
+  <!-- Message flow lines (agents → hub) -->
+  <path d="M280,125 C350,125 420,200 520,235"
+        fill="none" stroke="url(#accent2)" stroke-width="2" stroke-dasharray="6,4" opacity="0.6">
+    <animate attributeName="stroke-dashoffset" from="100" to="0" dur="3s" repeatCount="indefinite"/>
+  </path>
+  <path d="M1000,125 C930,125 860,200 760,235"
+        fill="none" stroke="url(#accent3)" stroke-width="2" stroke-dasharray="6,4" opacity="0.6">
+    <animate attributeName="stroke-dashoffset" from="100" to="0" dur="2.5s" repeatCount="indefinite"/>
+  </path>
+  <path d="M280,425 C350,425 420,360 520,325"
+        fill="none" stroke="url(#accent3)" stroke-width="2" stroke-dasharray="6,4" opacity="0.6">
+    <animate attributeName="stroke-dashoffset" from="100" to="0" dur="3.5s" repeatCount="indefinite"/>
+  </path>
+  <path d="M1000,425 C930,425 860,360 760,325"
+        fill="none" stroke="url(#accent2)" stroke-width="2" stroke-dasharray="6,4" opacity="0.6">
+    <animate attributeName="stroke-dashoffset" from="100" to="0" dur="2.8s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- Animated message dots -->
+  <circle r="4" fill="url(#accent2)" opacity="0.9">
+    <animateMotion dur="3s" repeatCount="indefinite" path="M280,125 C350,125 420,200 520,235"/>
+  </circle>
+  <circle r="4" fill="url(#accent3)" opacity="0.9">
+    <animateMotion dur="2.5s" repeatCount="indefinite" path="M1000,125 C930,125 860,200 760,235"/>
+  </circle>
+  <circle r="4" fill="url(#accent3)" opacity="0.9">
+    <animateMotion dur="3.5s" repeatCount="indefinite" path="M280,425 C350,425 420,360 520,325"/>
+  </circle>
+
+  <!-- Service labels below agents -->
+  <text x="210" y="170" font-family="monospace" font-size="9" fill="#505068" text-anchor="middle">Bridge · Auto-Responder</text>
+  <text x="1070" y="170" font-family="monospace" font-size="9" fill="#505068" text-anchor="middle">Bridge · Watchdog</text>
+  <text x="210" y="470" font-family="monospace" font-size="9" fill="#505068" text-anchor="middle">Bridge · Dream Engine</text>
+  <text x="1070" y="470" font-family="monospace" font-size="9" fill="#505068" text-anchor="middle">Event Router · MCP</text>
+
+  <!-- Title -->
+  <text x="640" y="550" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+        font-size="56" font-weight="700" fill="url(#accent1)" text-anchor="middle"
+        filter="url(#softGlow)">Agent Message Bus</text>
+  <text x="640" y="580" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+        font-size="16" font-weight="300" fill="#a0a0c0" text-anchor="middle">A2A Communication Protocol for Hermes Agents</text>
+  <text x="640" y="598" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+        font-size="12" font-weight="300" fill="#707090" text-anchor="middle">Pull-based message bus · SQLite · MCP tools · Multi-agent LLM Bridge</text>
+
+  <!-- Version badge -->
+  <rect x="595" y="515" width="90" height="22" rx="11" fill="#7c3aed" fill-opacity="0.3"
+        stroke="#7c3aed" stroke-width="0.5"/>
+  <text x="640" y="530" font-family="monospace" font-size="10" fill="#c4b5fd" text-anchor="middle">v1.0.0</text>
+
+  <!-- Bottom bar -->
+  <line x1="200" y1="622" x2="1080" y2="622" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+  <text x="640" y="632" font-family="monospace" font-size="10" fill="#505060" text-anchor="middle">github.com/kriszmac4/a2a-communication-protocol</text>
+</svg>

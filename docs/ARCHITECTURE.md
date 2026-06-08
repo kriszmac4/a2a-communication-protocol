@@ -50,4 +50,4 @@ A végtelen ciklus elkerülésére 3 mechanizmus:
 1. **Message Type Filter**: `auto_reply` típusú üzenetekre SOHA nem generálódik újabb válasz
 2. **Chain Depth**: Minden auto-válasz növeli a `chain_depth` értéket. Max 10 mélység után a Bridge nem válaszol.
 3. **Rate Limit**: Agent páronként max 3 auto-válasz / 60 másodperc. Ezt is a `bridge_engine.py` kényszeríti ki.
-4. **Sender Blacklist**: bizonyos service-ek (`auto_responder`, `message-router`, `marveen_llm_bridge`) soha nem kapnak választ
+4. **Sender Blacklist**: bizonyos service-ek (`auto_responder`, `message-router`, `agent_message_bus_llm_bridge`) soha nem kapnak választ

@@ -1,5 +1,31 @@
+# Python
 __pycache__/
-*.pyc
-.env
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+*.so
+
+# Data
 *.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env
+.env.local
+*.env
+
+# Editor/IDE
 .DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini

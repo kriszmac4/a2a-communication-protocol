@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-marveen/webhook_handler.py — Wakeup Endpoint Handler
+agent_message_bus/webhook_handler.py — Wakeup Endpoint Handler
 
-Implements the POST /api/marveen/wakeup handler logic. This module is NOT an
+Implements the POST /api/agent_message_bus/wakeup handler logic. This module is NOT an
 HTTP server — it exposes ``handle_wakeup()``, a callable function invoked by the
 MCP server after a message is created or retried.
 
@@ -79,7 +79,7 @@ def _write_trigger_file(
     Always called as a fallback so the target agent's cron / turn-start
     logic can pick up pending messages even if session initiation fails.
     """
-    trigger_dir = _AMB_DATA_ROOT / "profiles" / target_agent / "data" / "marveen"
+    trigger_dir = _AMB_DATA_ROOT / "profiles" / target_agent / "data" / "agent_message_bus"
     trigger_dir.mkdir(parents=True, exist_ok=True)
     trigger_path = trigger_dir / "wakeup_pending.json"
 
@@ -278,9 +278,9 @@ def handle_wakeup(
     # ── 1. Idempotency check ──────────────────────────────────────────────
     if idempotency_key:
         try:
-            from agent_message_bus import _get_db as _marveen_db
+            from agent_message_bus import _get_db as _agent_message_bus_db
 
-            conn = _marveen_db()
+            conn = _agent_message_bus_db()
             row = conn.execute(
                 "SELECT status FROM agent_messages WHERE idempotency_key = ?",
                 (idempotency_key,),
@@ -407,9 +407,9 @@ def handle_wakeup(
 
         # Update retry_count in the DB
         try:
-            from agent_message_bus import _get_db as _marveen_db
+            from agent_message_bus import _get_db as _agent_message_bus_db
 
-            conn = _marveen_db()
+            conn = _agent_message_bus_db()
             conn.execute(
                 "UPDATE agent_messages SET retry_count = ? WHERE id = ?",
                 (retry_count, message_id),

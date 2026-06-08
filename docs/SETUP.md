@@ -8,13 +8,13 @@
 ## 1. Marveen modul telepítése
 
 ```bash
-# Másold a marveen/ modult a Hermes scripts könyvtárába
-cp -r marveen/ ~/.hermes/scripts/marveen/
+# Másold a agent_message_bus/ modult a Hermes scripts könyvtárába
+cp -r agent_message_bus/ ~/.hermes/scripts/agent_message_bus/
 
 # És a profilod alá is (minden profilhoz, ahol használni akarod)
-cp -r marveen/ ~/.hermes/profiles/dev/scripts/marveen/
-cp -r marveen/ ~/.hermes/profiles/research/scripts/marveen/
-cp -r marveen/ ~/.hermes/profiles/study/scripts/marveen/
+cp -r agent_message_bus/ ~/.hermes/profiles/dev/scripts/agent_message_bus/
+cp -r agent_message_bus/ ~/.hermes/profiles/research/scripts/agent_message_bus/
+cp -r agent_message_bus/ ~/.hermes/profiles/study/scripts/agent_message_bus/
 ```
 
 ## 2. Bridge-ek telepítése
@@ -36,28 +36,28 @@ A következő cron job-okat kell létrehozni:
 
 ```bash
 # Message Router (30 másodperc)
-hermes cron create --name marveen-message-router \
+hermes cron create --name agent_message_bus-message-router \
   --schedule "*/30 * * * * *" \
-  --script "marveen_message_router.py" \
+  --script "agent_message_bus_message_router.py" \
   --no-agent
 
 # Auto-Responder (5 perc)
-hermes cron create --name marveen-auto-responder \
+hermes cron create --name agent_message_bus-auto-responder \
   --schedule "*/5 * * * *" \
-  --script "marveen_auto_responder.py" \
+  --script "agent_message_bus_auto_responder.py" \
   --no-agent
 
 # Watchdog (2 perc)
-hermes cron create --name marveen-watchdog \
+hermes cron create --name agent_message_bus-watchdog \
   --schedule "*/2 * * * *" \
-  --script "marveen_watchdog.py" \
+  --script "agent_message_bus_watchdog.py" \
   --no-agent
 
 # LLM Bridge-ek (3 perc) — minden ágenshez
 for agent in general dev research study; do
-  hermes cron create --name "marveen-llm-bridge-$agent" \
+  hermes cron create --name "agent_message_bus-llm-bridge-$agent" \
     --schedule "*/3 * * * *" \
-    --script "marveen_llm_bridge_${agent}.py" \
+    --script "agent_message_bus_llm_bridge_${agent}.py" \
     --no-agent
 done
 ```
@@ -68,10 +68,10 @@ Add hozzá a `~/.hermes/profiles/dev/config.yaml`-hoz:
 
 ```yaml
 mcp_servers:
-  marveen:
+  agent_message_bus:
     command: python3
     args:
-      - ~/.hermes/profiles/dev/scripts/marveen_mcp_server.py
+      - ~/.hermes/profiles/dev/scripts/agent_message_bus_mcp_server.py
     enabled: true
 ```
 

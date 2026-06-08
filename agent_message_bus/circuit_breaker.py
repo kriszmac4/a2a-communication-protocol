@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-marveen/circuit_breaker.py — Per-agent Circuit Breaker
+agent_message_bus/circuit_breaker.py — Per-agent Circuit Breaker
 
 3-state circuit breaker (CLOSED / OPEN / HALF_OPEN) with JSON file
 persistence per agent. Prevents error spirals by blocking requests
@@ -27,12 +27,12 @@ _lock = threading.Lock()
 
 
 def _get_data_dir() -> Path:
-    """Lazy-resolve DATA_DIR from the marveen package."""
+    """Lazy-resolve DATA_DIR from the agent_message_bus package."""
     global _DATA_DIR
     if _DATA_DIR is None:
-        from agent_message_bus import DATA_DIR as marveen_data_dir
+        from agent_message_bus import DATA_DIR as agent_message_bus_data_dir
 
-        _DATA_DIR = marveen_data_dir
+        _DATA_DIR = agent_message_bus_data_dir
     return _DATA_DIR
 
 
@@ -239,7 +239,7 @@ def is_circuit_open(agent: str) -> bool:
 if __name__ == "__main__":
     print("=== Circuit Breaker Self-Test ===")
 
-    # When running standalone, ensure the marveen package is importable
+    # When running standalone, ensure the agent_message_bus package is importable
     import sys as _sys
 
     _scripts_dir = Path(__file__).resolve().parent.parent

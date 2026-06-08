@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-marveen/metrics.py — File-based Metrics Collection
+agent_message_bus/metrics.py — File-based Metrics Collection
 
 Simple append-only JSONL metrics with hourly rotation and 72-hour retention.
 Thread-safe (``threading.Lock``).  Zero external dependencies — pure stdlib.
@@ -31,12 +31,12 @@ _rotation_lock = threading.Lock()  # separate lock for rotation to avoid deadloc
 
 
 def _get_data_dir() -> Path:
-    """Lazy-resolve DATA_DIR from the marveen package."""
+    """Lazy-resolve DATA_DIR from the agent_message_bus package."""
     global _DATA_DIR
     if _DATA_DIR is None:
-        from agent_message_bus import DATA_DIR as marveen_data_dir
+        from agent_message_bus import DATA_DIR as agent_message_bus_data_dir
 
-        _DATA_DIR = marveen_data_dir
+        _DATA_DIR = agent_message_bus_data_dir
     return _DATA_DIR
 
 
@@ -268,7 +268,7 @@ def get_metrics_last_hour() -> Dict[str, Any]:
 
 
 def get_metrics_summary() -> Dict[str, Any]:
-    """Return a high-level summary suitable for ``marveen_status`` display.
+    """Return a high-level summary suitable for ``agent_message_bus_status`` display.
 
     This aggregates the last hour plus circuit breaker state snapshots.
 
@@ -357,7 +357,7 @@ if __name__ == "__main__":
     print("=== Metrics Self-Test ===")
 
     # Override DATA_DIR with a temp dir for testing
-    test_dir = Path(tempfile.mkdtemp(prefix="marveen_metrics_test_"))
+    test_dir = Path(tempfile.mkdtemp(prefix="agent_message_bus_metrics_test_"))
     _DATA_DIR = test_dir
 
     # Write some test metrics
