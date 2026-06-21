@@ -45,7 +45,7 @@ def query_llm(user_message: str, system_prompt: str, provider: dict) -> str | No
             {"role": "user", "content": user_message[:MAX_PROMPT_LEN]},
         ],
         "temperature": 0.7,
-        "max_tokens": 600,
+        "max_tokens": 4096,
         "stream": False,
     }
 
