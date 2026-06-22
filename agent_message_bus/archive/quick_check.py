@@ -1,8 +1,9 @@
-#!/home/artofphotogrphyy/.hermes/.venv/bin/python3
+#!/usr/bin/env python3
 """Quick check of pending AMB messages and trigger state."""
 import sys
 import os
-sys.path.insert(0, '/home/artofphotogrphyy/.hermes/scripts')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 from agent_message_bus import get_pending_messages, get_messages, DATA_DIR
 
 # Check DB size

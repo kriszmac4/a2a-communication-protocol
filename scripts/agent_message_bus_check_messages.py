@@ -1,4 +1,4 @@
-#!/home/artofphotogrphyy/.hermes/.venv/bin/python3
+#!/usr/bin/env python3
 """Check Marveen message bus for pending messages and report state."""
 import sys
 from pathlib import Path

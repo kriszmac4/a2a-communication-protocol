@@ -14,7 +14,7 @@ Usage:
 Register in ~/.hermes/config.yaml:
     mcp_servers:
       agent_message_bus:
-        command: "/home/artofphotogrphyy/.hermes/scripts/agent_message_bus_mcp_server.py"
+        command: "~/.hermes/scripts/agent_message_bus_mcp_server.py"
         timeout: 30
         connect_timeout: 5
 """
@@ -23,10 +23,15 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
+
+# Force global HERMES_HOME so the MCP server always uses the shared DB
+# (session HOME override would otherwise point to profile-local DB)
+os.environ.setdefault("HERMES_HOME", str(Path.home() / ".hermes"))
 from pathlib import Path
 
-# Ensure agent_message_bus module is importable from the central location
+# Ensure agent_message_bus module is importable
 sys.path.insert(0, str(Path.home() / ".hermes" / "scripts"))
 from agent_message_bus import (
     create_message,
@@ -73,32 +78,133 @@ def _tool(name: str, description: str, inputSchema: dict) -> Tool:
     return Tool(name=name, description=description, inputSchema=inputSchema)
 
 
+def _detect_agent() -> str:
+    """Auto-detect current agent from environment."""
+    agent = os.environ.get("HERMES_PROFILE") or os.environ.get("HERMES_HOME", "").rsplit("/", 1)[-1] or "general"
+    if agent == ".hermes":
+        agent = "general"
+    return agent
+
+
+def _get_trigger_path(target_agent: str = None) -> Path:
+    """Get the wakeup_pending.json trigger file path for a target agent."""
+    if target_agent is None:
+        target_agent = _detect_agent()
+    return (
+        Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
+        / "profiles" / target_agent / "data" / "agent_message_bus" / "wakeup_pending.json"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Permission matrix for inter-agent delegation
+# ---------------------------------------------------------------------------
+DELEGATION_PERMISSIONS = {
+    "dev": ["general", "research", "study", "kanban", "ui"],
+    "general": ["dev", "research", "study", "kanban"],
+    "research": ["general", "study"],
+    "study": ["general", "research"],
+    "kanban": ["general", "dev"],
+    "ui": ["dev", "general"],
+}
+
+MAX_CHAIN_DEPTH = 5
+
+
+def _check_permission(from_agent: str, to_agent: str) -> bool:
+    """Check if from_agent is allowed to delegate to to_agent."""
+    allowed = DELEGATION_PERMISSIONS.get(from_agent, [])
+    return to_agent in allowed
+
+
+def _get_chain_depth(message_id: int) -> int:
+    """Count how deep the conversation chain is by following parent_message_id."""
+    depth = 0
+    current_id = message_id
+    seen = set()
+    db_path = (
+        Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
+        / "data" / "agent_message_bus" / "agent_messages.db"
+    )
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(db_path))
+        while current_id and current_id not in seen:
+            seen.add(current_id)
+            row = conn.execute(
+                "SELECT parent_message_id FROM agent_messages WHERE id = ?",
+                (current_id,)
+            ).fetchone()
+            if row and row[0]:
+                current_id = row[0]
+                depth += 1
+            else:
+                break
+        conn.close()
+    except Exception:
+        pass
+    return depth
+
+
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     return [
-        # --- Agent Message Bus tools ---
+        # === COMPOSITE A2A TOOLS (replacing low-level counterparts) ===
         _tool(
-            "agent_send_message",
-            "Send an async message to another agent via the Agent Message Bus. "
-            "Agents: 'general', 'dev', 'research', 'study'. "
-            "The from_agent is auto-detected from your profile. "
-            "The message will be delivered when the target agent checks their inbox.",
+            "check_inbox",
+            "Check your incoming messages on the Agent Message Bus. "
+            "This composite tool handles trigger file detection (<60s freshness), "
+            "reads all pending messages, auto-acks them, and cleans up stale triggers. "
+            "Returns the full list of pending messages in a readable format. "
+            "Call this at the start of every turn to process inter-agent messages.",
             {
                 "type": "object",
                 "properties": {
-                    "to_agent": {"type": "string", "description": "Target agent name: general, dev, research, or study"},
-                    "content": {"type": "string", "description": "Message content"},
-                    "priority": {"type": "integer", "description": "Priority (0=normal, 1=high, 2=urgent)", "default": 0}
-                },
-                "required": ["to_agent", "content"]
+                    "limit": {"type": "integer", "description": "Max messages to return (default: 20)", "default": 20},
+                    "mark_read": {"type": "boolean", "description": "Auto-mark as read (default: true)", "default": True}
+                }
             }
         ),
         _tool(
+            "delegate_task",
+            "Delegate a task to another agent via the Agent Message Bus. "
+            "This composite tool checks the permission matrix, sends the message, "
+            "triggers wakeup for the target, and notifies the user. "
+            "Supported targets: 'general', 'dev', 'research', 'study'.",
+            {
+                "type": "object",
+                "properties": {
+                    "target_agent": {"type": "string", "enum": ["general", "dev", "research", "study"],
+                                     "description": "Target agent to delegate to"},
+                    "task": {"type": "string", "description": "The task description/instructions for the target agent"},
+                    "priority": {"type": "integer", "enum": [0, 1, 2], "description": "Priority (0=normal, 1=high, 2=urgent)", "default": 0}
+                },
+                "required": ["target_agent", "task"]
+            }
+        ),
+        _tool(
+            "respond_to_message",
+            "Mark a message as completed with a result and optionally send a reply. "
+            "This composite tool marks the original message as done, creates a reply "
+            "message back to the sender, and tracks conversation chain depth. "
+            "Call this after you've processed a delegated task.",
+            {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "integer", "description": "The message ID to mark as done"},
+                    "response": {"type": "string", "description": "Your response/result for the sender"},
+                    "send_reply": {"type": "boolean", "description": "Send an auto-reply back to the original sender (default: true)", "default": True}
+                },
+                "required": ["message_id", "response"]
+            }
+        ),
+        # === LOW-LEVEL SEND (typed messages with full payload) ===
+        _tool(
             "send_bus_message",
             "Send a strictly typed async message to another agent via the Agent Message Bus. "
-            "This is the PRIMARY tool for inter-agent communication — use it whenever you need "
-            "data, handoff a task, request clarification, or alert another agent. "
-            "Includes idempotency protection: duplicate messages are detected and rejected.",
+            "This is a low-level tool for advanced use — prefer delegate_task() for most "
+            "delegation scenarios. Includes idempotency protection: duplicate messages are "
+            "detected and rejected.",
             {
                 "type": "object",
                 "properties": {
@@ -122,32 +228,6 @@ async def list_tools() -> list[Tool]:
                     "max_retries": {"type": "integer", "default": 3, "description": "Max retries before DLQ."}
                 },
                 "required": ["target_agent_id", "message_type", "payload"]
-            }
-        ),
-        _tool(
-            "agent_read_messages",
-            "Read your incoming messages from the agent message bus. "
-            "Returns pending (unread) messages by default.",
-            {
-                "type": "object",
-                "properties": {
-                    "status": {"type": "string", "enum": ["pending", "delivered", "done", "failed", "read"], "description": "Filter by status (default: pending)"},
-                    "limit": {"type": "integer", "description": "Max messages to return (default: 20)", "default": 20},
-                    "mark_read": {"type": "boolean", "description": "Mark returned messages as 'read' (default: true)", "default": True}
-                }
-            }
-        ),
-        _tool(
-            "agent_mark_done",
-            "Mark a message as completed with a result. "
-            "Call this after you've processed a message.",
-            {
-                "type": "object",
-                "properties": {
-                    "message_id": {"type": "integer", "description": "The message ID to mark as done"},
-                    "result": {"type": "string", "description": "Optional result/response text"}
-                },
-                "required": ["message_id"]
             }
         ),
         # --- Agent Card / Discovery tools ---
@@ -257,36 +337,230 @@ async def list_tools() -> list[Tool]:
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[dict]:
     try:
-        if name == "agent_send_message":
-            # Auto-detect sender from HERMES_PROFILE (most reliable) or fallback to HERMES_HOME
-            # HERMES_PROFILE=dev → from_agent=dev
-            # HERMES_HOME=/home/user/.hermes/profiles/research → from_agent=research
-            from_agent = os.environ.get("HERMES_PROFILE") or os.environ.get("HERMES_HOME", "").rsplit("/", 1)[-1] or "general"
-            # Fallback: if path is the root .hermes dir, use "general"
-            if from_agent == ".hermes":
-                from_agent = "general"
-            to_agent = arguments["to_agent"]
-            content = arguments["content"]
+        me = _detect_agent()
+
+        # ==================================================================
+        # COMPOSITE: check_inbox
+        # ==================================================================
+        if name == "check_inbox":
+            limit = arguments.get("limit", 20)
+            do_mark_read = arguments.get("mark_read", True)
+
+            # 1. Check trigger file
+            trigger_path = _get_trigger_path(me)
+            trigger_status = "none"
+            if trigger_path.exists():
+                try:
+                    trigger_data = json.loads(trigger_path.read_text())
+                    ts = trigger_data.get("timestamp", 0)
+                    age = time.time() - ts  # Note: uses imported `time` namespace
+                    if age < 60:
+                        trigger_status = "fresh"
+                        logger.info("Fresh trigger file found for %s (%.0fs old)", me, age)
+                    else:
+                        trigger_status = "stale"
+                        logger.info("Stale trigger file found for %s (%.0fs old) — deleting", me, age)
+                        trigger_path.unlink(missing_ok=True)
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.warning("Failed to read trigger file: %s", exc)
+                    trigger_path.unlink(missing_ok=True)
+
+            # 2. Query pending/delivered messages
+            msgs = get_messages(to_agent=me, status="pending,delivered", limit=limit)
+
+            # 3. Auto-ack
+            if do_mark_read:
+                for m in msgs:
+                    mark_read(m["id"])
+                    try:
+                        open_message_thread(m["id"])
+                    except Exception:
+                        pass
+
+            # 4. Clean up trigger file after processing
+            if trigger_path.exists():
+                trigger_path.unlink(missing_ok=True)
+
+            # 5. Build response
+            if not msgs:
+                return _json_result({
+                    "status": "empty",
+                    "trigger_status": trigger_status,
+                    "messages": [],
+                    "message": "📭 Nincs új üzenet. (trigger: {})".format(trigger_status)
+                })
+
+            lines = [f"📬 **Bejövő üzenetek ({len(msgs)})**:\n"]
+            for m in msgs:
+                created = datetime.fromtimestamp(m["created_at"], tz=timezone.utc)
+                lines.append(
+                    f"🆔 #{m['id']} | 📤 {m['from_agent']} "
+                    f"| 🏷 {m['status']} | 📅 {created.strftime('%H:%M UTC')}\n"
+                    f"> {m['content'][:300]}\n"
+                )
+
+            return _json_result({
+                "status": "ok",
+                "trigger_status": trigger_status,
+                "message_count": len(msgs),
+                "messages": [
+                    {
+                        "id": m["id"],
+                        "from": m["from_agent"],
+                        "content": m["content"][:500],
+                        "priority": m.get("priority", 0),
+                        "created_at": m["created_at"],
+                    }
+                    for m in msgs
+                ],
+                "display": "\n".join(lines)
+            })
+
+        # ==================================================================
+        # COMPOSITE: delegate_task
+        # ==================================================================
+        elif name == "delegate_task":
+            target_agent = arguments["target_agent"]
+            task = arguments["task"]
             priority = arguments.get("priority", 0)
-            msg = create_message(from_agent, to_agent, content, priority)
+
+            # 1. Permission check
+            if not _check_permission(me, target_agent):
+                return _json_result({
+                    "status": "blocked",
+                    "reason": f"❌ Permission denied: {me} → {target_agent} is not in the allowed delegation matrix."
+                })
+
+            # 2. Create message
+            msg = create_message(me, target_agent, task, priority)
+
+            # 3. Trigger wakeup
             try:
                 from agent_message_bus.webhook_handler import handle_wakeup
-                handle_wakeup(target_agent=to_agent, message_id=msg["id"], from_agent=from_agent, priority=priority)
-            except Exception:
-                pass
+                handle_wakeup(
+                    target_agent=target_agent,
+                    message_id=msg["id"],
+                    from_agent=me,
+                    priority=priority,
+                    preview=task[:120],
+                )
+            except Exception as exc:
+                logger.warning("Wakeup trigger failed: %s", exc)
+
             return _json_result({
                 "status": "sent",
                 "message_id": msg["id"],
-                "to_agent": to_agent,
-                "message": f"Üzenet elküldve: {to_agent} részére. "
-                          f"Az üzenet a következő alkalommal kerül kézbesítésre, "
-                          f"amikor {to_agent} ellenőrzi a bejövő üzeneteit."
+                "to_agent": target_agent,
+                "message": f"✅ Delegáltam {target_agent} részére: {task[:100]}..."
             })
 
+        # ==================================================================
+        # COMPOSITE: respond_to_message
+        # ==================================================================
+        elif name == "respond_to_message":
+            msg_id = arguments["message_id"]
+            response = arguments["response"]
+            send_reply = arguments.get("send_reply", True)
+
+            # 1. Try v7.2 ownership-validated response path
+            amb_response = None
+            try:
+                import sys as _sys
+                _bus_dir = str(Path(__file__).parent.parent / "bus")
+                if _bus_dir not in _sys.path:
+                    _sys.path.insert(0, _bus_dir)
+                import amb_response as _ar
+                amb_response = _ar
+            except ImportError:
+                pass
+
+            response_written = False
+            if amb_response:
+                try:
+                    # Wrap string response in amb.response.v1 format
+                    if isinstance(response, str):
+                        structured = {
+                            "schema_version": "amb.response.v1",
+                            "status": "success",
+                            "summary": response[:200],
+                            "result": response,
+                            "artifacts": [],
+                            "error": None,
+                            "metadata": {"source": "mcp"},
+                        }
+                    else:
+                        structured = response
+                    amb_response.respond_to_message(msg_id, structured)
+                    response_written = True
+                except (RuntimeError, ValueError) as exc:
+                    logger.warning("v7.2 respond_to_message failed for #%d, falling back to mark_done: %s", msg_id, exc)
+
+            # 2. Fallback: legacy mark_done (no ownership validation)
+            if not response_written:
+                ok = mark_done(msg_id, response)
+                if not ok:
+                    return _text_result(f"⚠️ #{msg_id} nem található vagy már lezárva.")
+
+            # 2. Get original message for sender info by querying DB directly
+            import sqlite3
+            db_path = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))) / "data" / "agent_message_bus" / "agent_messages.db"
+            original_sender = None
+            original_priority = 0
+            try:
+                conn = sqlite3.connect(str(db_path))
+                row = conn.execute("SELECT from_agent, priority, to_agent FROM agent_messages WHERE id = ?", (msg_id,)).fetchone()
+                if row:
+                    original_sender = row[0]
+                    original_priority = row[1] or 0
+                conn.close()
+            except Exception as exc:
+                logger.warning("Failed to query original message #%d: %s", msg_id, exc)
+
+            # 3. Send reply if requested
+            reply_id = None
+            chain_depth = 0
+            if send_reply and original_sender and original_sender != me:
+                # Track chain depth
+                chain_depth = _get_chain_depth(msg_id)
+                if chain_depth >= MAX_CHAIN_DEPTH:
+                    logger.warning("Chain depth %d reached for #%d — sending anyway", chain_depth, msg_id)
+
+                reply_msg = create_message(
+                    me, original_sender,
+                    f"[Válasz #{msg_id}] {response}",
+                    priority=original_priority,
+                )
+                reply_id = reply_msg["id"]
+
+                # Trigger wakeup for the original sender
+                try:
+                    from agent_message_bus.webhook_handler import handle_wakeup
+                    handle_wakeup(
+                        target_agent=original_sender,
+                        message_id=reply_msg["id"],
+                        from_agent=me,
+                        priority=0,
+                        preview=response[:120],
+                    )
+                except Exception as exc:
+                    logger.warning("Reply wakeup failed: %s", exc)
+
+            result = {
+                "status": "done",
+                "message_id": msg_id,
+                "chain_depth": chain_depth,
+            }
+            if reply_id:
+                result["reply_message_id"] = reply_id
+                result["reply_to"] = original_sender
+
+            return _json_result(result)
+
+        # ==================================================================
+        # LOW-LEVEL: send_bus_message (keep for advanced typed messaging)
+        # ==================================================================
         elif name == "send_bus_message":
-            from_agent = os.environ.get("HERMES_PROFILE") or os.environ.get("HERMES_HOME", "").rsplit("/", 1)[-1] or "general"
-            if from_agent == ".hermes":
-                from_agent = "general"
+            from_agent = me
             target = arguments["target_agent_id"]
             payload_dict = arguments["payload"]
             if "summary" not in payload_dict or "body" not in payload_dict:
@@ -300,7 +574,6 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
             expires_at = arguments.get("expires_at")
             max_retries = arguments.get("max_retries", 3)
 
-            # Validate + insert via create_typed_message
             from agent_message_bus import create_typed_message
             msg = create_typed_message(
                 from_agent=from_agent, to_agent=target, content=content,
@@ -310,7 +583,6 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
                 max_retries=max_retries
             )
 
-            # Trigger wakeup via webhook handler
             from agent_message_bus.webhook_handler import handle_wakeup
             wakeup = handle_wakeup(
                 target_agent=target, message_id=msg["id"],
@@ -328,45 +600,9 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
                 "message": f"Message #{msg['id']} sent to {target}. Wakeup: {wakeup['action']}."
             })
 
-        elif name == "agent_read_messages":
-            # Auto-detect who is reading from HERMES_PROFILE or HERMES_HOME
-            me = os.environ.get("HERMES_PROFILE") or os.environ.get("HERMES_HOME", "").rsplit("/", 1)[-1] or "general"
-            if me == ".hermes":
-                me = "general"
-            status = arguments.get("status", "pending")
-            limit = arguments.get("limit", 20)
-            do_mark_read = arguments.get("mark_read", True)
-
-            msgs = get_messages(to_agent=me, status=status, limit=limit)
-            
-            if do_mark_read and status == "pending":
-                logger.info(f"agent_read_messages: {len(msgs)} pending, opening threads")
-                for m in msgs:
-                    mark_read(m["id"])
-                    # Open Discord thread so user can see we're working
-                    open_message_thread(m["id"])
-
-            if not msgs:
-                return _text_result("Nincs új üzenet.")
-
-            lines = [f"📬 **Bejövő üzenetek ({len(msgs)})**:\n"]
-            for m in msgs:
-                created = datetime.fromtimestamp(m["created_at"], tz=timezone.utc)
-                lines.append(
-                    f"🆔 #{m['id']} | 📤 {m['from_agent']} "
-                    f"| 🏷 {m['status']} | 📅 {created.strftime('%H:%M UTC')}\n"
-                    f"> {m['content'][:200]}\n"
-                )
-            return _text_result("\n".join(lines))
-
-        elif name == "agent_mark_done":
-            msg_id = arguments["message_id"]
-            result = arguments.get("result", "")
-            ok = mark_done(msg_id, result)
-            if ok:
-                return _text_result(f"✅ #{msg_id} megjelölve done-ként.")
-            return _text_result(f"⚠️ #{msg_id} nem található vagy már lezárva.")
-
+        # ==================================================================
+        # DISCOVERY TOOLS
+        # ==================================================================
         elif name == "agent_discover":
             task = arguments["task"]
             top_k = arguments.get("top_k", 3)
@@ -410,6 +646,9 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
             record_skill_invocation(agent, skill, task_excerpt)
             return _text_result(f"✅ Rögzítve: {agent} → {skill}")
 
+        # ==================================================================
+        # AUTONOMY TOOLS
+        # ==================================================================
         elif name == "autonomy_get_levels":
             cats = get_all_autonomy_categories()
             lines = ["**⚙️ Autonómia szintek:**\n"]
@@ -445,6 +684,9 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
                 f"({'autonóm' if level >= 3 else 'jóváhagyás kell' if level >= 2 else 'csak jelzés'})"
             )
 
+        # ==================================================================
+        # DREAM ENGINE
+        # ==================================================================
         elif name == "dream_get_last":
             dreams = sorted(DREAMS_DIR.glob("*.md"), reverse=True)
             if not dreams:
@@ -465,43 +707,34 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
                 )
             return _text_result("\n".join(lines))
 
+        # ==================================================================
+        # SYSTEM STATUS
+        # ==================================================================
         elif name == "amb_status":
-            # Message queue stats
             pending = get_messages(status="pending", limit=0)
             delivered = get_messages(status="delivered", limit=0)
             done_today = get_messages(status="done", limit=100)
-            
-            # Autonomy
             cats = get_all_autonomy_categories()
             level3 = sum(1 for c in cats if c["level"] == 3)
             level2 = sum(1 for c in cats if c["level"] == 2)
             level1 = sum(1 for c in cats if c["level"] == 1)
-            
-            # Dream engine
             dreams = sorted(DREAMS_DIR.glob("*.md"), reverse=True)
             last_dream = dreams[0].stem if dreams else "Még nincs"
-            
-            # Dead Letter Queue
             dead = get_messages(status="dead", limit=0)
-            
-            # Circuit Breaker states
+
             cb_agents = ["dev", "general", "research", "study"]
             try:
                 from agent_message_bus.circuit_breaker import get_circuit_state as get_cb_state
-                cb_states = {}
-                for agent in cb_agents:
-                    cb_states[agent] = get_cb_state(agent)
+                cb_states = {a: get_cb_state(a) for a in cb_agents}
             except Exception:
                 cb_states = {}
-            
-            # Metrics summary
+
             try:
                 from agent_message_bus.metrics import get_metrics_summary
                 metrics = get_metrics_summary()
             except Exception:
                 metrics = {}
-            
-            # Build output
+
             cb_lines = []
             if cb_states:
                 for agent in cb_agents:
@@ -509,7 +742,7 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
                     cb_lines.append(f"- {agent}: {state}")
             else:
                 cb_lines.append("- (unavailable)")
-            
+
             metrics_lines = []
             if metrics:
                 metrics_lines.append(f"- messages_sent_total: {metrics.get('messages_sent_total', 'N/A')}")
@@ -520,7 +753,7 @@ async def call_tool(name: str, arguments: dict) -> list[dict]:
                 metrics_lines.append(f"- delivery_success_rate: {dsr}%")
             else:
                 metrics_lines.append("- (unavailable)")
-            
+
             return _text_result(
                 "**📊 Agent Message Bus Integration Status**\n\n"
                 "**📬 Agent Message Bus**\n"
@@ -557,7 +790,7 @@ async def main():
             write_stream,
             InitializationOptions(
                 server_name="agent_message_bus",
-                server_version="1.0.0",
+                server_version="1.1.0",
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},

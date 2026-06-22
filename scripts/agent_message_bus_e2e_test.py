@@ -34,7 +34,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 logger = logging.getLogger("e2e-test")
 
 # ── Configuration — use known absolute paths ──
-HOME = Path("/home/artofphotogrphyy")
+HOME = Path.home()
 HERMES_HOME = HOME / ".hermes" / "profiles" / "dev"
 DATA_DIR = HERMES_HOME / "data" / "agent_message_bus"
 DB_PATH = DATA_DIR / "agent_messages.db"

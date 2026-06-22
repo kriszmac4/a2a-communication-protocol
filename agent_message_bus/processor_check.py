@@ -1,7 +1,8 @@
-#!/home/artofphotogrphyy/.hermes/.venv/bin/python3
+#!/usr/bin/env python3
 """Quick AMB DB check — used by the processor cron."""
 import sys
-sys.path.insert(0, '/home/artofphotogrphyy/.hermes/scripts')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from agent_message_bus import get_pending_messages, get_messages
 
 pending = get_pending_messages()

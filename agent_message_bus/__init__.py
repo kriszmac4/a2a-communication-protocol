@@ -121,6 +121,19 @@ def _init_db(conn: sqlite3.Connection):
     except Exception as e:
         logger.warning(f"Schema migration error: {e}")
 
+    # ── AMB v7.2 runtime migrations ──
+    try:
+        import sys as _sys
+        _bus_dir = str(Path(__file__).parent.parent / "bus")
+        if _bus_dir not in _sys.path:
+            _sys.path.insert(0, _bus_dir)
+        import amb_migrations
+        amb_migrations.run_migrations()
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
     # ── CHECK constraint migration for existing DBs ──
     try:
         cur = conn.execute(
@@ -268,8 +281,14 @@ def get_messages(from_agent: Optional[str] = None,
         clauses.append("to_agent = ?")
         params.append(to_agent)
     if status:
-        clauses.append("status = ?")
-        params.append(status)
+        if ',' in status:
+            statuses = [s.strip() for s in status.split(',')]
+            placeholders = ', '.join('?' * len(statuses))
+            clauses.append(f"status IN ({placeholders})")
+            params.extend(statuses)
+        else:
+            clauses.append("status = ?")
+            params.append(status)
     where = " AND ".join(clauses) if clauses else "1=1"
     rows = conn.execute(
         f"SELECT * FROM agent_messages WHERE {where} "
@@ -295,7 +314,7 @@ def mark_read(msg_id: int) -> bool:
     conn = _get_db()
     cur = conn.execute(
         "UPDATE agent_messages SET status = 'read' "
-        "WHERE id = ? AND status IN ('delivered', 'pending')",
+        "WHERE id = ? AND status IN ('delivered', 'pending', 'read')",
         (msg_id,)
     )
     conn.commit()
@@ -307,7 +326,7 @@ def mark_done(msg_id: int, result: str = "") -> bool:
     now = time.time()
     cur = conn.execute(
         "UPDATE agent_messages SET status = 'done', result = ?, completed_at = ? "
-        "WHERE id = ? AND status IN ('pending','delivered')",
+        "WHERE id = ? AND status IN ('pending','delivered','read')",
         (result, now, msg_id)
     )
     conn.commit()

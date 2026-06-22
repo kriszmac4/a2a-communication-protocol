@@ -2,7 +2,8 @@
 """Check pending messages via direct DB access and write to output file."""
 import sys
 import json
-sys.path.insert(0, '/home/artofphotogrphyy/.hermes/scripts')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 from agent_message_bus import get_pending_messages, get_messages
 
 results = {"pending": [], "delivered": [], "read": []}

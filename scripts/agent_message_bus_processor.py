@@ -1,4 +1,4 @@
-#!/home/artofphotogrphyy/.hermes/.venv/bin/python3
+#!/usr/bin/env python3
 """
 Agent Message Bus Universal Message Processor — LLM-based processing of inter-agent messages.
 

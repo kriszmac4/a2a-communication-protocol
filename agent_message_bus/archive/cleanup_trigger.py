@@ -1,4 +1,4 @@
-#!/home/artofphotogrphyy/.hermes/.venv/bin/python3
+#!/usr/bin/env python3
 """Clean up stale/empty AMB trigger file."""
 import os
 

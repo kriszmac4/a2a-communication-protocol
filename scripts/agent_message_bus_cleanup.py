@@ -20,10 +20,11 @@ import os
 import sqlite3
 import sys
 import time
+from pathlib import Path
 
 AMB_DB = os.environ.get(
     "AMB_DB_PATH",
-    "/home/artofphotogrphyy/.hermes/data/agent_message_bus/agent_messages.db",
+    str(Path.home() / ".hermes" / "data" / "agent_message_bus" / "agent_messages.db"),
 )
 
 
